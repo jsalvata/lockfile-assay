@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { StagingError } from '../../src/errors.js';
 import { revParse } from '../../src/git.js';
 import { collectStagedFiles, materialize } from '../../src/staging.js';
 import { commitAll, makeRepo, writeFiles } from '../helpers/scratch-repo.js';
@@ -61,5 +62,47 @@ describe('staging', () => {
         mkdtempSync(join(tmpdir(), 'a-')),
       ),
     ).toThrow();
+  });
+
+  it('rejects backslash path traversal', () => {
+    expect(() =>
+      materialize(
+        [{ path: '..\\evil', bytes: Buffer.from('x') }],
+        mkdtempSync(join(tmpdir(), 'a-')),
+      ),
+    ).toThrow();
+  });
+
+  it('never stages a head lockfile alias even when declared', () => {
+    const dir = makeRepo({
+      'package.json': '{"name":"r"}',
+      'PNPM-LOCK.YAML': 'TAMPERED',
+    });
+    const head = revParse('HEAD', dir);
+    const files = collectStagedFiles({
+      baseRef: null,
+      headRef: head,
+      declared: ['PNPM-LOCK.YAML'],
+      cwd: dir,
+    });
+    const paths = files.map((f) => f.path);
+    expect(paths).not.toContain('PNPM-LOCK.YAML');
+    expect(paths.some((p) => p.toLowerCase() === 'pnpm-lock.yaml')).toBe(false);
+  });
+
+  it('materialize rejects lockfile aliases in any case or nesting', () => {
+    const out = mkdtempSync(join(tmpdir(), 'a-'));
+    expect(() => materialize([{ path: 'PNPM-LOCK.YAML', bytes: Buffer.from('x') }], out)).toThrow(
+      StagingError,
+    );
+    expect(() =>
+      materialize([{ path: 'nested/PNPM-lock.yaml', bytes: Buffer.from('x') }], out),
+    ).toThrow(StagingError);
+  });
+
+  it('materialize writes the base root lockfile normally', () => {
+    const out = mkdtempSync(join(tmpdir(), 'a-'));
+    materialize([{ path: 'pnpm-lock.yaml', bytes: Buffer.from('BASE-LOCK') }], out);
+    expect(readFileSync(join(out, 'pnpm-lock.yaml'), 'utf8')).toBe('BASE-LOCK');
   });
 });
