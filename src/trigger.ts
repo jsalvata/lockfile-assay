@@ -39,6 +39,18 @@ export function isResolutionInput(path: string, declared: string[]): boolean {
   if (path === '.npmrc' || path.endsWith('/.npmrc')) return true;
   if (path.startsWith('patches/')) return true;
   if (path.endsWith('.patch') || path.endsWith('.diff')) return true;
+  // A pnpmfile is executable resolution code — the PR that introduces one must
+  // trigger so preflight can refuse it (spec §3: over-triggering is safe,
+  // under-triggering never is). Same basename predicate as preflight's
+  // presence scan: lowercased for case-insensitive filesystems.
+  if (
+    path
+      .slice(path.lastIndexOf('/') + 1)
+      .toLowerCase()
+      .startsWith('.pnpmfile.')
+  ) {
+    return true;
+  }
   return declared.includes(path);
 }
 

@@ -14,6 +14,9 @@ describe('trigger', () => {
       'patches/lodash@4.17.21.patch',
       'tools/fix.diff',
       'vendor/odd-location.patch2',
+      '.pnpmfile.cjs',
+      'packages/app/.pnpmfile.cjs',
+      '.PNPMFILE.CJS',
     ]) {
       expect(isTriggered([p, 'src/index.ts'], declared), p).toBe(true);
     }
