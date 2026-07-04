@@ -12,4 +12,14 @@ describe('parseConfig', () => {
     expect(() => parseConfig(Buffer.from('{nope'))).toThrow(UsageError);
     expect(() => parseConfig(Buffer.from('{"mode":"loose"}'))).toThrow(UsageError);
   });
+  it('non-object valid JSON → UsageError (fail closed)', () => {
+    expect(() => parseConfig(Buffer.from('42'))).toThrow(UsageError);
+    expect(() => parseConfig(Buffer.from('"x"'))).toThrow(UsageError);
+    expect(() => parseConfig(Buffer.from('[1,2]'))).toThrow(UsageError);
+    expect(() => parseConfig(Buffer.from('null'))).toThrow(UsageError);
+  });
+  it('error messages carry the earlier-merge exculpation', () => {
+    expect(() => parseConfig(Buffer.from('{nope'))).toThrow(/earlier merge/);
+    expect(() => parseConfig(Buffer.from('{"mode":"loose"}'))).toThrow(/earlier merge/);
+  });
 });
