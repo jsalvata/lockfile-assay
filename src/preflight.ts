@@ -1,6 +1,6 @@
 import type { StagedFile } from './staging.js';
 
-const NPMRC_KEYS = /^\s*(pnpmfile|ignore-pnpmfile)\s*=/m;
+const NPMRC_KEYS = /^\s*(global-pnpmfile|pnpmfile|ignore-pnpmfile)\s*=/m;
 // Value must be lowercase `false` — pnpm's ini reader coerces only that spelling;
 // `FALSE` is a truthy string. Optional matched quotes, trailing whitespace and
 // inline `#`/`;` comments allowed (no bare `$` anchor so trailing content can't
@@ -8,8 +8,10 @@ const NPMRC_KEYS = /^\s*(pnpmfile|ignore-pnpmfile)\s*=/m;
 const NPMRC_SPLIT = /^\s*shared-workspace-lockfile\s*=\s*(["']?)false\1\s*(?:[#;]|$)/m;
 const WS_KEYS = /^\s*(pnpmfile|ignorePnpmfile)\s*:/m;
 // YAML booleans are case-insensitive on the value (false/False/FALSE), keys are
-// not. Optional matched quotes, trailing whitespace and `#` comments allowed.
-const WS_SPLIT = /^\s*sharedWorkspaceLockfile\s*:\s*(["']?)(?:false|False|FALSE)\1\s*(?:#|$)/m;
+// not. No quote tolerance: the yaml parser reads a *quoted* value as the truthy
+// string "false", so pnpm keeps the shared lockfile — such a repo is valid and
+// must not be flagged. Trailing whitespace and `#` comments allowed.
+const WS_SPLIT = /^\s*sharedWorkspaceLockfile\s*:\s*(?:false|False|FALSE)\s*(?:#|$)/m;
 
 // The pnpmfile itself is never staged (its bytes are executable resolution
 // code), so presence is detected from the head tree's path list alone.

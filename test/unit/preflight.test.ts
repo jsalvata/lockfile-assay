@@ -18,6 +18,7 @@ describe('preflight', () => {
     expect(unsupportedInputs([], ['.PNPMFILE.CJS'])).toHaveLength(1);
     expect(unsupportedInputs([f('.npmrc', 'pnpmfile=./hooks.cjs\n')], [])).toHaveLength(1);
     expect(unsupportedInputs([f('.npmrc', 'ignore-pnpmfile=true\n')], [])).toHaveLength(1);
+    expect(unsupportedInputs([f('.npmrc', 'global-pnpmfile=./hooks.cjs\n')], [])).toHaveLength(1);
     expect(unsupportedInputs([f('pnpm-workspace.yaml', 'pnpmfile: ./h.cjs\n')], [])).toHaveLength(
       1,
     );
@@ -59,5 +60,13 @@ describe('preflight', () => {
   it('does not flag values pnpm reads as truthy', () => {
     // pnpm's ini reader coerces only lowercase `false`; FALSE is a truthy string.
     expect(unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=FALSE\n')], [])).toEqual([]);
+    // The yaml parser reads a *quoted* value as the truthy string "false", so
+    // pnpm keeps the shared lockfile — a quoted YAML value must not be flagged.
+    expect(
+      unsupportedInputs([f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: "false"\n')], []),
+    ).toEqual([]);
+    expect(
+      unsupportedInputs([f('pnpm-workspace.yaml', "sharedWorkspaceLockfile: 'false'\n")], []),
+    ).toEqual([]);
   });
 });
