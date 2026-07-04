@@ -6,20 +6,58 @@ const f = (path: string, s: string) => ({ path, bytes: Buffer.from(s) });
 describe('preflight', () => {
   it('accepts a plain repo', () => {
     expect(
-      unsupportedInputs([f('package.json', '{}'), f('.npmrc', 'registry=http://x/\n')]),
+      unsupportedInputs(
+        [f('package.json', '{}'), f('.npmrc', 'registry=http://x/\n')],
+        ['package.json', '.npmrc', 'pnpm-lock.yaml', 'src/index.ts'],
+      ),
     ).toEqual([]);
   });
   it('refuses pnpmfile in any form', () => {
-    expect(unsupportedInputs([f('.pnpmfile.cjs', 'x')])).toHaveLength(1);
-    expect(unsupportedInputs([f('pkg/.pnpmfile.cjs', 'x')])).toHaveLength(1);
-    expect(unsupportedInputs([f('.npmrc', 'pnpmfile=./hooks.cjs\n')])).toHaveLength(1);
-    expect(unsupportedInputs([f('.npmrc', 'ignore-pnpmfile=true\n')])).toHaveLength(1);
-    expect(unsupportedInputs([f('pnpm-workspace.yaml', 'pnpmfile: ./h.cjs\n')])).toHaveLength(1);
+    expect(unsupportedInputs([], ['.pnpmfile.cjs'])).toHaveLength(1);
+    expect(unsupportedInputs([], ['pkg/.pnpmfile.cjs'])).toHaveLength(1);
+    expect(unsupportedInputs([], ['.PNPMFILE.CJS'])).toHaveLength(1);
+    expect(unsupportedInputs([f('.npmrc', 'pnpmfile=./hooks.cjs\n')], [])).toHaveLength(1);
+    expect(unsupportedInputs([f('.npmrc', 'ignore-pnpmfile=true\n')], [])).toHaveLength(1);
+    expect(unsupportedInputs([f('pnpm-workspace.yaml', 'pnpmfile: ./h.cjs\n')], [])).toHaveLength(
+      1,
+    );
   });
   it('refuses split lockfiles', () => {
-    expect(unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=false\n')])).toHaveLength(1);
+    expect(unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=false\n')], [])).toHaveLength(
+      1,
+    );
     expect(
-      unsupportedInputs([f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: false\n')]),
+      unsupportedInputs([f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: false\n')], []),
     ).toHaveLength(1);
+  });
+  it('refuses split-lockfile spellings pnpm honors', () => {
+    expect(
+      unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile="false"\n')], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs([f('.npmrc', "shared-workspace-lockfile='false'\n")], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=false # comment\n')], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=false ; comment\n')], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs([f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: False\n')], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs([f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: FALSE\n')], []),
+    ).toHaveLength(1);
+    expect(
+      unsupportedInputs(
+        [f('pnpm-workspace.yaml', 'sharedWorkspaceLockfile: false # comment\n')],
+        [],
+      ),
+    ).toHaveLength(1);
+  });
+  it('does not flag values pnpm reads as truthy', () => {
+    // pnpm's ini reader coerces only lowercase `false`; FALSE is a truthy string.
+    expect(unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=FALSE\n')], [])).toEqual([]);
   });
 });

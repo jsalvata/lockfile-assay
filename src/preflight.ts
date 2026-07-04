@@ -1,18 +1,32 @@
 import type { StagedFile } from './staging.js';
 
 const NPMRC_KEYS = /^\s*(pnpmfile|ignore-pnpmfile)\s*=/m;
-const NPMRC_SPLIT = /^\s*shared-workspace-lockfile\s*=\s*false\s*$/m;
+// Value must be lowercase `false` — pnpm's ini reader coerces only that spelling;
+// `FALSE` is a truthy string. Optional matched quotes, trailing whitespace and
+// inline `#`/`;` comments allowed (no bare `$` anchor so trailing content can't
+// defeat the match).
+const NPMRC_SPLIT = /^\s*shared-workspace-lockfile\s*=\s*(["']?)false\1\s*(?:[#;]|$)/m;
 const WS_KEYS = /^\s*(pnpmfile|ignorePnpmfile)\s*:/m;
-const WS_SPLIT = /^\s*sharedWorkspaceLockfile\s*:\s*false\s*$/m;
+// YAML booleans are case-insensitive on the value (false/False/FALSE), keys are
+// not. Optional matched quotes, trailing whitespace and `#` comments allowed.
+const WS_SPLIT = /^\s*sharedWorkspaceLockfile\s*:\s*(["']?)(?:false|False|FALSE)\1\s*(?:#|$)/m;
 
-export function unsupportedInputs(files: StagedFile[]): string[] {
+// The pnpmfile itself is never staged (its bytes are executable resolution
+// code), so presence is detected from the head tree's path list alone.
+function isPnpmfilePath(path: string): boolean {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  return base.toLowerCase().startsWith('.pnpmfile.');
+}
+
+export function unsupportedInputs(files: StagedFile[], headPaths: string[]): string[] {
   const reasons: string[] = [];
+  for (const path of headPaths) {
+    if (isPnpmfilePath(path)) {
+      reasons.push(`${path}: pnpmfile is executable resolution code — unsupported in v1 (spec §3)`);
+    }
+  }
   for (const { path, bytes } of files) {
     const base = path.split('/').pop() ?? path;
-    if (base.startsWith('.pnpmfile.')) {
-      reasons.push(`${path}: pnpmfile is executable resolution code — unsupported in v1 (spec §3)`);
-      continue;
-    }
     const text = () => bytes.toString('utf8');
     if (base === '.npmrc') {
       if (NPMRC_KEYS.test(text()))
