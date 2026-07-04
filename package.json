@@ -1,0 +1,64 @@
+{
+  "name": "lockfile-assay",
+  "version": "0.0.0-development",
+  "description": "Prove your lockfile is untampered — a byte-exact derivation gate for pnpm-lock.yaml",
+  "keywords": [
+    "pnpm",
+    "lockfile",
+    "supply-chain",
+    "security",
+    "ci"
+  ],
+  "license": "MIT",
+  "author": "Jordi Salvat",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jsalvata/lockfile-assay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jsalvata/lockfile-assay/issues"
+  },
+  "homepage": "https://github.com/jsalvata/lockfile-assay#readme",
+  "type": "module",
+  "bin": {
+    "lockfile-assay": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.34.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "commander": "15.0.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
+    "@commitlint/cli": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/node": "^26.1.0",
+    "husky": "^9.1.7",
+    "semantic-release": "^25.0.5",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "verdaccio": "^6.7.4",
+    "vitest": "^4.1.9"
+  }
+}

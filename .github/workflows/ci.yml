@@ -1,0 +1,45 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test:unit
+      - name: CLI smoke test
+        run: |
+          node dist/cli.js --help | grep -q check
+      - name: Dogfood — run the assay on this PR
+        if: github.event_name == 'pull_request'
+        run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD || [ "$?" != "1" ]
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pnpm-fixture: ['9.12.0', '10.34.1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:integration
+        env:
+          PNPM_FIXTURE_VERSION: ${{ matrix.pnpm-fixture }}
