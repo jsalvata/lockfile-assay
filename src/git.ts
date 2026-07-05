@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { UsageError } from './errors.js';
+import { CannotEvaluate, UsageError } from './errors.js';
 
 type GitResult = { status: number; stdout: Buffer; stderr: Buffer };
 
@@ -39,4 +39,27 @@ export function diffNames(base: string, head: string, cwd?: string): string[] {
 export function mergeBase(a: string, b: string, cwd?: string): string | null {
   const r = git(['merge-base', a, b], { cwd });
   return r.status === 0 ? r.stdout.toString().trim() : null;
+}
+
+export function writeIndexTree(cwd?: string): string {
+  const r = git(['write-tree'], { cwd });
+  if (r.status !== 0) {
+    throw new CannotEvaluate(
+      `cannot snapshot the index (unmerged entries?): ${r.stderr.toString().trim()}`,
+    );
+  }
+  return r.stdout.toString().trim();
+}
+
+export function diffNamesIndex(cwd?: string): string[] {
+  const r = git(['diff', '--name-only', '-z', '--cached'], { cwd });
+  if (r.status !== 0) throw new CannotEvaluate('cannot diff the index');
+  return r.stdout.toString().split('\0').filter(Boolean);
+}
+
+export function remoteDefaultBranch(cwd?: string): string | null {
+  const r = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd });
+  if (r.status === 0) return r.stdout.toString().trim().replace('refs/remotes/', '');
+  const probe = git(['rev-parse', '--verify', '--quiet', 'origin/main'], { cwd });
+  return probe.status === 0 ? 'origin/main' : null;
 }
