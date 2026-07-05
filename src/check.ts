@@ -48,12 +48,19 @@ function result(
   };
 }
 
-/** anchored CI form (spec §5): base and head are commits; a derive failure fails red */
+/**
+ * anchored CI form (spec §5): base and head are commits; a derive failure fails
+ * red. `failClosed` defaults to `true` — the CI check and `check --base/--head`
+ * CLI keep that posture. The push-time form (spec §8) passes `false` per tip so
+ * a broken local env degrades to `cannot-evaluate` (exit 0) instead of bricking
+ * the push; the anchored CI check still gates the merge.
+ */
 export async function runCheck(opts: {
   base: string;
   head: string;
   cwd?: string;
   memo?: MemoHook | null;
+  failClosed?: boolean;
 }): Promise<CheckResult> {
   const cwd = opts.cwd;
   const base = revParse(opts.base, cwd);
@@ -72,7 +79,7 @@ export async function runCheck(opts: {
     headLabel: head,
     cwd,
     memo: opts.memo ?? null,
-    failClosed: true,
+    failClosed: opts.failClosed ?? true,
   });
 }
 

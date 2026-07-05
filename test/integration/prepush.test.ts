@@ -6,6 +6,14 @@ import { addSelfOrigin, makeFixtureRepo } from '../helpers/fixture.js';
 import { type Registry, startRegistry } from '../helpers/registry.js';
 import { commitAll, sh, writeFiles } from '../helpers/scratch-repo.js';
 
+/** stage a NEW dependency absent from base's lockfile, forcing a fresh resolve */
+function stageNewDep(dir: string, name: string, range: string): void {
+  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  pkg.dependencies = { ...pkg.dependencies, [name]: range };
+  writeFiles(dir, { 'package.json': JSON.stringify(pkg, null, 2) });
+  sh(dir, 'git', ['add', 'package.json']);
+}
+
 let registry: Registry;
 beforeAll(async () => {
   registry = await startRegistry();
@@ -63,6 +71,53 @@ describe('prepush', () => {
     const r = await runPrepush({ stdin: '', cwd: f.dir });
     expect(r.tips).toHaveLength(1);
     expect(r.tips[0]?.outcome.kind).toBe('cannot-evaluate');
+    expect(r.exit).toBe(0);
+  });
+});
+
+// The TRIGGERED path (a fresh resolve is genuinely needed) is where the push
+// used to brick: `runCheck`'s derive failure threw past the `CannotEvaluate`
+// catch → exit 3 → push dead. It must instead fail OPEN — degrade the tip and
+// still evaluate the rest of the batch. Mirrors the B2 dead-registry test in
+// staged.test.ts: a dedicated registry stopped mid-test so every fresh resolve
+// genuinely fails.
+describe('prepush fails open on a triggered tip against a dead registry', () => {
+  it('degrades the failing tip to cannot-evaluate and still evaluates the next tip', async () => {
+    // dedicated registry so we can stop it mid-test without disturbing the shared one
+    const deadReg = await startRegistry();
+    await deadReg.publish({ name: 'alpha', version: '1.0.0' });
+    const f = await makeFixtureRepo(deadReg, { alpha: '^1.0.0' });
+    addSelfOrigin(f.dir);
+
+    // TIP 1 (triggered): commit a NEW dep absent from base's lockfile — a fresh
+    // resolve is genuinely required, so with the registry down the derivation
+    // fails. Kept reachable by sha after the rewind below (like a separate branch).
+    stageNewDep(f.dir, 'beta', '^1.0.0');
+    const triggered = commitAll(f.dir, 'add unresolved dependency');
+
+    // TIP 2 (source-only): rewind to base and build a second tip whose net diff
+    // touches no resolution input — its fast-path vacuous pass proves the batch
+    // did not abort on tip 1.
+    sh(f.dir, 'git', ['reset', '--hard', '-q', f.base]);
+    writeFiles(f.dir, { 'src.ts': 'x' });
+    const sourceOnly = commitAll(f.dir, 'source only');
+
+    await deadReg.stop(); // now every fresh resolve genuinely fails
+
+    const r = await runPrepush({
+      stdin: [
+        `refs/heads/a ${triggered} refs/heads/a ${ZERO}`,
+        `refs/heads/b ${sourceOnly} refs/heads/b ${ZERO}`,
+      ].join('\n'),
+      cwd: f.dir,
+    });
+
+    // the triggered tip degrades — the bug: it used to throw and brick the push
+    expect(r.tips).toHaveLength(2);
+    expect(r.tips[0]?.outcome.kind).toBe('cannot-evaluate');
+    // the batch continued: the second tip was still evaluated
+    expect(r.tips[1]?.outcome.kind).toBe('vacuous-pass');
+    // fail-open overall — a broken env never bricks the push (spec §8)
     expect(r.exit).toBe(0);
   });
 });

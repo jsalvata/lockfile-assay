@@ -30,10 +30,13 @@ export function parsePushLines(stdin: string): PushedTip[] {
  * push-time form (spec §8): each pushed tip is checked against the base its
  * PR's required check will use — `--base` override, else the merge-base with
  * the remote default branch. `runCheck` supplies the fast path (an untriggered
- * net diff is a vacuous pass with no config read and no network). Like the
- * commit-time form, a broken env (no origin default, no merge-base) degrades
- * that tip to `cannot-evaluate` (exit 0) instead of bricking the push — the
- * anchored CI check still gates the merge. Exit is the max over tips.
+ * net diff is a vacuous pass with no config read and no network) and, with
+ * `failClosed: false`, the fail-open posture: a broken env degrades that tip to
+ * `cannot-evaluate` (exit 0) rather than bricking the push — whether the break
+ * is base derivation (no origin default, no merge-base) or a triggered tip's
+ * derivation (unreachable registry, offline corepack, resolver failure). One
+ * bad tip degrades to a notice and the loop moves on to the next; the anchored
+ * CI check still gates the merge. Exit is the max over tips.
  */
 export async function runPrepush(opts: {
   stdin: string;
@@ -45,7 +48,15 @@ export async function runPrepush(opts: {
   for (const tip of parsePushLines(opts.stdin)) {
     try {
       const base = opts.baseOverride ?? deriveBase(tip.localSha, opts.cwd);
-      results.push(await runCheck({ base, head: tip.localSha, cwd: opts.cwd, memo: opts.memo }));
+      results.push(
+        await runCheck({
+          base,
+          head: tip.localSha,
+          cwd: opts.cwd,
+          memo: opts.memo,
+          failClosed: false,
+        }),
+      );
     } catch (e) {
       if (e instanceof CannotEvaluate) {
         const outcome = { kind: 'cannot-evaluate', reason: e.message } as const;
