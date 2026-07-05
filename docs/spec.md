@@ -126,8 +126,15 @@ serializer is canonical, so bytes don't flake by themselves. Verified empiricall
 (2026-07-04, pnpm 9.12.0 and 10.34.1), pinned as integration tests (§13):
 
 - two independent from-scratch resolves of the same manifest are byte-identical;
-- `pnpm add pkg@range` produces byte-identical output to editing the manifest and
-  re-running the install above — the author path and the checker path agree;
+- re-running the install above on a repo's **committed** manifest reproduces its
+  **committed** lockfile byte-for-byte — the checker path reproduces whatever the
+  author committed, *however* the author edited the manifest. (This is the property
+  the check relies on, and it is what the author↔checker agreement means. Note that
+  two *different* author actions need not agree at the byte level: `pnpm add
+  pkg@range` on pnpm ≥ 10 rewrites the saved specifier to the caret of the resolved
+  version, so it differs from a hand-edit by that one `specifier:` line — irrelevant
+  to the check, which always re-derives from the committed manifest, not from a
+  hypothetical alternative edit.)
 - re-running install on an in-sync tree rewrites nothing (idempotent);
 - locked versions that still satisfy their (possibly changed) ranges are **reused**,
   not re-resolved — only specs whose floor moved above base's lock, and edges new to
