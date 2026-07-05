@@ -1,10 +1,34 @@
 #!/usr/bin/env node
 import { program } from 'commander';
+import type { MemoHook } from './check.js';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
+import { discoverToken, originRepo } from './memo/auth.js';
+import { makeMemoClient } from './memo/client.js';
+import { contentsApiStore } from './memo/store.js';
 import { exitForError } from './outcome.js';
 import { runPrepush } from './prepush.js';
 import { renderHuman, renderJson } from './report/render.js';
+
+/**
+ * Assemble the derivation-memo hook (spec §8). Needs BOTH a github.com
+ * `origin` and a discoverable token — if either is absent the memo is silently
+ * disabled (null): a check never fails, warns, or blocks for lack of memo
+ * credentials (the credential-less/offline degrade). Origin is resolved first
+ * so the common non-GitHub case never spawns `gh auth token`.
+ *
+ * `write` is true only for the anchored CI form (`check --memo-write`); the
+ * local forms (`check --staged`, `prepush`) hard-code false — they may READ
+ * the memo but never write (spec §8: local runs hold no writer credential;
+ * the branch ruleset refuses non-App pushes anyway, but belt-and-braces).
+ */
+function buildMemo(write: boolean): MemoHook | null {
+  const repo = originRepo();
+  if (!repo) return null;
+  const token = discoverToken();
+  if (!token) return null;
+  return makeMemoClient(contentsApiStore({ repo, token }), { write });
+}
 
 async function main(): Promise<void> {
   program.name('lockfile-assay').description('Prove your lockfile is untampered.');
@@ -14,19 +38,28 @@ async function main(): Promise<void> {
     .option('--base <ref>', 'base ref (e.g. the PR merge-base)')
     .option('--head <ref>', 'head ref', 'HEAD')
     .option('--staged', 'check the index instead of a commit (git hook form)')
+    .option('--memo-write', 'record passing derivations to the memo (anchored CI form only)')
     .option('--json', 'emit the machine report')
-    .action(async (o: { base?: string; head: string; staged?: boolean; json?: boolean }) => {
-      if (o.staged) {
-        const r = await runStagedCheck({});
+    .action(
+      async (o: {
+        base?: string;
+        head: string;
+        staged?: boolean;
+        memoWrite?: boolean;
+        json?: boolean;
+      }) => {
+        if (o.staged) {
+          const r = await runStagedCheck({ memo: buildMemo(false) });
+          console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
+          process.exitCode = r.exit;
+          return;
+        }
+        if (!o.base) throw new UsageError('--base <ref> is required');
+        const r = await runCheck({ base: o.base, head: o.head, memo: buildMemo(!!o.memoWrite) });
         console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
         process.exitCode = r.exit;
-        return;
-      }
-      if (!o.base) throw new UsageError('--base <ref> is required');
-      const r = await runCheck({ base: o.base, head: o.head });
-      console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
-      process.exitCode = r.exit;
-    });
+      },
+    );
   program
     .command('prepush')
     .description('git pre-push hook form: check every pushed tip against its PR base')
@@ -42,7 +75,11 @@ async function main(): Promise<void> {
             });
             process.stdin.on('end', () => resolve(data));
           });
-      const { tips, exit } = await runPrepush({ stdin, baseOverride: o.base });
+      const { tips, exit } = await runPrepush({
+        stdin,
+        baseOverride: o.base,
+        memo: buildMemo(false),
+      });
       if (o.json) {
         console.log(
           JSON.stringify(
