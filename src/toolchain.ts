@@ -24,6 +24,16 @@ export function pnpmLauncher(): string[] {
   return launcher;
 }
 
+export function derivationEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(base)) {
+    if (/^npm_config_/i.test(k)) continue; // env overrides must not outrank the staged .npmrc (spec §3/§6)
+    out[k] = v;
+  }
+  out.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
+  return out;
+}
+
 export function run(
   args: string[],
   dir: string,
@@ -31,7 +41,7 @@ export function run(
   const [cmd, ...pre] = pnpmLauncher();
   const r = spawnSync(cmd as string, [...pre, ...args], {
     cwd: dir,
-    env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' },
+    env: derivationEnv(),
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.error) throw r.error;

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { derive } from '../../src/derive.js';
 import { UsageError } from '../../src/errors.js';
-import { effectivePnpmVersion, parsePin } from '../../src/toolchain.js';
+import { derivationEnv, effectivePnpmVersion, parsePin } from '../../src/toolchain.js';
 
 const PNPM = process.env.PNPM_FIXTURE_VERSION ?? '10.34.1';
 
@@ -27,6 +27,26 @@ describe('toolchain', () => {
     expect(() => parsePin(Buffer.from(JSON.stringify({ packageManager: 'yarn@4.0.0' })))).toThrow(
       UsageError,
     );
+  });
+
+  it('derivationEnv strips npm_config_* so env cannot outrank the staged .npmrc', () => {
+    const env = derivationEnv({
+      npm_config_registry: 'http://evil/',
+      npm_config_foo: 'x',
+      PATH: '/usr/bin',
+      HOME: '/h',
+    });
+    expect(Object.keys(env).some((k) => /^npm_config_/i.test(k))).toBe(false);
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.HOME).toBe('/h');
+    expect(env.COREPACK_ENABLE_DOWNLOAD_PROMPT).toBe('0');
+  });
+
+  it('derivationEnv strips npm_config_* case-insensitively', () => {
+    const env = derivationEnv({ NPM_CONFIG_REGISTRY: 'http://evil/', PATH: '/usr/bin' });
+    expect(Object.keys(env).some((k) => /^npm_config_/i.test(k))).toBe(false);
+    expect(env.PATH).toBe('/usr/bin');
+    expect(env.COREPACK_ENABLE_DOWNLOAD_PROMPT).toBe('0');
   });
 
   it('effective version honors the staged pin', () => {
