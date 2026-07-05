@@ -12,10 +12,12 @@ export const EPOCH = 1;
  *
  * Canonical stream: files sorted by path, then per file
  * `utf8(path) ‖ 0x00 ‖ uint64BE(byteLength) ‖ bytes ‖ 0x00`, then
- * `utf8(invocation)`. The fixed-width length prefix stops adjacent files from
- * boundary-shifting into a collision; the NUL terminators are unambiguous
- * because git tree entry names are NUL-terminated in the object format and so
- * can never contain NUL, and the invocation is a NUL-free source constant.
+ * `uint64BE(byteLength) ‖ utf8(invocation)`. The fixed-width length prefixes
+ * stop adjacent files from boundary-shifting into a collision and keep file
+ * bytes from masquerading as invocation bytes (the stream stays uniquely
+ * decodable even if caller-controlled data ever flows through `invocation`);
+ * the NUL terminators are unambiguous because git tree entry names are
+ * NUL-terminated in the object format and so can never contain NUL.
  *
  * The sort makes the digest independent of collection order. It compares code
  * units (plain `<`/`>`), NOT localeCompare: locale collation is ICU- and
@@ -34,6 +36,9 @@ export function inputsHash(files: StagedFile[], invocation: string): string {
     h.update(f.bytes);
     h.update(Buffer.from([0]));
   }
+  const invLen = Buffer.alloc(8);
+  invLen.writeBigUInt64BE(BigInt(Buffer.byteLength(invocation, 'utf8')));
+  h.update(invLen);
   h.update(invocation, 'utf8');
   return h.digest('hex');
 }
