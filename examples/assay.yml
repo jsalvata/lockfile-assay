@@ -1,0 +1,39 @@
+# Reference required-check workflow for lockfile-assay with the derivation memo.
+#
+# This is the *anchored CI form* — the only form that writes memo records
+# (spec §8). It mints a short-lived GitHub App installation token and passes it
+# to the CLI in env; the App's identity is the sole writer the memo branch's
+# ruleset allows, so the verdict this workflow records is trustworthy even
+# though the PR author controls everything else in the run.
+#
+# Setup (App, secrets, memo branch, ruleset) is in docs/setup-github-app.md.
+#
+# Private-registry note: the derivation strips `npm_config_*` env vars so
+# ambient env can't override the staged `.npmrc` (spec §6). Supply private
+# registry auth via the runner's ~/.npmrc FILE, not `npm_config_*` env vars —
+# add a step that writes ~/.npmrc before the check runs.
+name: lockfile-assay
+on:
+  pull_request:
+jobs:
+  assay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/create-github-app-token@v1
+        id: memo-token
+        with:
+          app-id: ${{ secrets.ASSAY_APP_ID }}
+          private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+      - name: lockfile-assay
+        env:
+          LOCKFILE_ASSAY_TOKEN: ${{ steps.memo-token.outputs.token }}
+        run: |
+          npx --yes lockfile-assay check \
+            --base "origin/${{ github.base_ref }}" --head HEAD \
+            --memo-write --json
