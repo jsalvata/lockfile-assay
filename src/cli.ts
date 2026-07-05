@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { program } from 'commander';
-import { runCheck } from './check.js';
+import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, UsageError } from './errors.js';
 import { exitForError } from './outcome.js';
 import { renderHuman, renderJson } from './report/render.js';
@@ -15,7 +15,12 @@ async function main(): Promise<void> {
     .option('--staged', 'check the index instead of a commit (git hook form)')
     .option('--json', 'emit the machine report')
     .action(async (o: { base?: string; head: string; staged?: boolean; json?: boolean }) => {
-      if (o.staged) throw new UsageError('--staged lands in the next release'); // replaced in PR B
+      if (o.staged) {
+        const r = await runStagedCheck({});
+        console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
+        process.exitCode = r.exit;
+        return;
+      }
       if (!o.base) throw new UsageError('--base <ref> is required');
       const r = await runCheck({ base: o.base, head: o.head });
       console.log(o.json ? renderJson(r.report) : renderHuman(r.report));

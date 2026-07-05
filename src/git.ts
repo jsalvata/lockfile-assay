@@ -13,8 +13,12 @@ function git(args: string[], opts: { cwd?: string; stdin?: string | Buffer } = {
   return { status: r.status ?? -1, stdout: r.stdout, stderr: r.stderr };
 }
 
-export function revParse(ref: string, cwd?: string): string {
-  const r = git(['rev-parse', '--verify', `${ref}^{commit}`], { cwd });
+export function revParse(ref: string, cwd?: string, opts: { allowTree?: boolean } = {}): string {
+  // with allowTree the ref resolves to its TREE oid (a commit is peeled), so
+  // any tree-ish — commit sha, index tree from write-tree — becomes readable
+  // via catFile/lsTreePaths under one identifier
+  const suffix = opts.allowTree ? '^{tree}' : '^{commit}';
+  const r = git(['rev-parse', '--verify', `${ref}${suffix}`], { cwd });
   if (r.status !== 0) throw new UsageError(`unresolvable ref: ${ref}`);
   return r.stdout.toString().trim();
 }

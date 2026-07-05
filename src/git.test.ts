@@ -10,6 +10,15 @@ describe('git plumbing', () => {
     expect(() => revParse('nope-ref', dir)).toThrow(UsageError);
   });
 
+  it('revParse with allowTree accepts tree-ish refs', () => {
+    const dir = makeRepo({ 'a.txt': 'a' });
+    const tree = revParse('HEAD', dir, { allowTree: true });
+    expect(tree).toMatch(/^[0-9a-f]{40}$/);
+    expect(tree).not.toBe(revParse('HEAD', dir)); // the tree oid, not the commit oid
+    expect(revParse(tree, dir, { allowTree: true })).toBe(tree);
+    expect(() => revParse(tree, dir)).toThrow(UsageError); // a bare tree is not a commit
+  });
+
   it('catFile returns bytes or null', () => {
     const dir = makeRepo({ 'a.txt': 'hello' });
     expect(catFile('HEAD', 'a.txt', dir)?.toString()).toBe('hello');
