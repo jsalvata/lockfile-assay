@@ -74,9 +74,11 @@ lockfile carries nothing the visible diff didn't state.
 
 **Trigger.** The PR's **net base→head** diff touches the lockfile or any resolution
 input: `pnpm-lock.yaml`, any `package.json` (any at all — over-triggering is safe,
-under-triggering never is), `.npmrc`, `pnpm-workspace.yaml`, `patches/`, and any path
-named by `patchedDependencies`. PRs that touch none of these are out of scope and
-pass vacuously — decided from one `git diff --name-only`, before config is read.
+under-triggering never is), `.npmrc`, `pnpm-workspace.yaml`, `patches/`, any path
+named by `patchedDependencies`, and any `.pnpmfile.*` (so the PR that introduces
+executable resolution hooks reaches the preflight refusal below rather than passing
+vacuously). PRs that touch none of these are out of scope and pass vacuously —
+decided from one `git diff --name-only`, before config is read.
 
 **Staging.**
 
@@ -94,13 +96,16 @@ adopts pnpm), nothing is staged as cache and the derivation runs from scratch �
 deterministic per the empirics below — with the byte compare deciding as usual; the
 drift surface is then the whole file rather than the changed specs.
 
-**Preflight.** Two head configurations are refused as **unsupported-input** (§5),
+**Preflight.** Three head shapes are refused as **unsupported-input** (§5),
 v1's fail-closed answer to inputs it cannot honor honestly: a **pnpmfile**
 (`.pnpmfile.cjs`, or `pnpmfile`/`ignore-pnpmfile` in config) — executable resolution
 hooks; honoring them is roadmap (§11), since it breaks §8's "nothing executes"
-argument, not §2's (the file is reviewable diff) — and
-**`shared-workspace-lockfile=false`**, which splits the single root lockfile v1
-assumes.
+argument, not §2's (the file is reviewable diff); **`shared-workspace-lockfile=false`**,
+which splits the single root lockfile v1 assumes; and a **non-`package.json` manifest**
+(`package.yaml` or `package.json5`, which pnpm also reads) — v1 stages only
+`package.json`, so a repo using these would otherwise derive against an incomplete
+workspace and mismatch confusingly. A clean refusal beats that; broadening staging to
+the other manifest formats is roadmap (§11).
 
 **Invocation.** In an isolated copy of the staged tree:
 
