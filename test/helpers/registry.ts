@@ -1,10 +1,11 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 export type SyntheticPkg = {
   name: string;
@@ -29,7 +30,15 @@ export class RegistryError extends Error {
   }
 }
 
-/** gzipped npm tarball (package/ prefix) for a synthetic package, built with the system tar */
+// A fixed mtime so two registries publishing the "same" synthetic package emit
+// byte-identical tarballs — hence identical integrity — exactly as a real npm
+// mirror proxies upstream bytes unchanged. The .npmrc registry-redirect scenario
+// relies on this: without it, wall-clock mtimes baked into the tar and gzip
+// headers would make the mirror's bytes differ, and an honest redirect would
+// read as tampering.
+const TARBALL_MTIME = new Date('2020-01-01T00:00:00Z');
+
+/** deterministic gzipped npm tarball (package/ prefix) for a synthetic package */
 function tarball(pkg: SyntheticPkg): Buffer {
   const dir = mkdtempSync(join(tmpdir(), 'assay-pkg-'));
   mkdirSync(join(dir, 'package'));
@@ -46,12 +55,19 @@ function tarball(pkg: SyntheticPkg): Buffer {
     join(dir, 'package', 'index.js'),
     `module.exports = '${pkg.name}@${pkg.version}';\n`,
   );
-  // COPYFILE_DISABLE keeps macOS bsdtar from adding AppleDouble entries
-  execFileSync('tar', ['-czf', 'pkg.tgz', 'package'], {
-    cwd: dir,
-    env: { ...process.env, COPYFILE_DISABLE: '1' },
-  });
-  return readFileSync(join(dir, 'pkg.tgz'));
+  for (const rel of ['package/package.json', 'package/index.js', 'package']) {
+    utimesSync(join(dir, rel), TARBALL_MTIME, TARBALL_MTIME);
+  }
+  // ustar (not pax) records only the fixed mtime — no atime/ctime; fixed uid/gid
+  // drop the invoking user. COPYFILE_DISABLE keeps macOS bsdtar from adding
+  // AppleDouble entries. Node's gzip writes a zeroed header mtime, so the
+  // two-step tar|gzip is fully reproducible across publishes.
+  execFileSync(
+    'tar',
+    ['--format', 'ustar', '--uid', '0', '--gid', '0', '-cf', 'pkg.tar', 'package'],
+    { cwd: dir, env: { ...process.env, COPYFILE_DISABLE: '1' } },
+  );
+  return gzipSync(readFileSync(join(dir, 'pkg.tar')));
 }
 
 function freePort(): Promise<number> {
