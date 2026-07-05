@@ -1,6 +1,6 @@
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -36,38 +36,57 @@ export class RegistryError extends Error {
 // relies on this: without it, wall-clock mtimes baked into the tar and gzip
 // headers would make the mirror's bytes differ, and an honest redirect would
 // read as tampering.
-const TARBALL_MTIME = new Date('2020-01-01T00:00:00Z');
+const TARBALL_MTIME_SECONDS = Date.UTC(2020, 0, 1) / 1000;
+
+/**
+ * One 512-byte ustar header block. Hand-rolled rather than shelled out: the
+ * `--uid`/`--gid` pinning flags are bsdtar-only (GNU tar on Linux CI rejects
+ * them), and pure JS gives fully controlled, platform-independent bytes —
+ * fixed mtime, zero uid/gid, empty uname/gname, no atime/ctime leakage.
+ */
+function ustarHeader(name: string, size: number, typeflag: '0' | '5'): Buffer {
+  const header = Buffer.alloc(512);
+  header.write(name, 0, 'utf8');
+  header.write(typeflag === '5' ? '0000755\0' : '0000644\0', 100); // mode
+  header.write('0000000\0', 108); // uid
+  header.write('0000000\0', 116); // gid
+  header.write(`${size.toString(8).padStart(11, '0')}\0`, 124);
+  header.write(`${TARBALL_MTIME_SECONDS.toString(8).padStart(11, '0')}\0`, 136);
+  header.write(typeflag, 156);
+  header.write('ustar\0', 257); // magic
+  header.write('00', 263); // version
+  // uname/gname stay NUL — no user identity in the bytes. Checksum is the byte
+  // sum of the header with the checksum field itself read as eight spaces.
+  header.fill(' ', 148, 156);
+  let sum = 0;
+  for (const byte of header) sum += byte;
+  header.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148);
+  return header;
+}
 
 /** deterministic gzipped npm tarball (package/ prefix) for a synthetic package */
 function tarball(pkg: SyntheticPkg): Buffer {
-  const dir = mkdtempSync(join(tmpdir(), 'assay-pkg-'));
-  mkdirSync(join(dir, 'package'));
-  writeFileSync(
-    join(dir, 'package', 'package.json'),
-    JSON.stringify({
-      name: pkg.name,
-      version: pkg.version,
-      main: 'index.js',
-      dependencies: pkg.dependencies ?? {},
-    }),
-  );
-  writeFileSync(
-    join(dir, 'package', 'index.js'),
-    `module.exports = '${pkg.name}@${pkg.version}';\n`,
-  );
-  for (const rel of ['package/package.json', 'package/index.js', 'package']) {
-    utimesSync(join(dir, rel), TARBALL_MTIME, TARBALL_MTIME);
+  const files: [name: string, content: string][] = [
+    [
+      'package/package.json',
+      JSON.stringify({
+        name: pkg.name,
+        version: pkg.version,
+        main: 'index.js',
+        dependencies: pkg.dependencies ?? {},
+      }),
+    ],
+    ['package/index.js', `module.exports = '${pkg.name}@${pkg.version}';\n`],
+  ];
+  const blocks: Buffer[] = [ustarHeader('package/', 0, '5')];
+  for (const [name, content] of files) {
+    const data = Buffer.from(content, 'utf8');
+    blocks.push(ustarHeader(name, data.length, '0'), data);
+    blocks.push(Buffer.alloc((512 - (data.length % 512)) % 512)); // pad to block
   }
-  // ustar (not pax) records only the fixed mtime — no atime/ctime; fixed uid/gid
-  // drop the invoking user. COPYFILE_DISABLE keeps macOS bsdtar from adding
-  // AppleDouble entries. Node's gzip writes a zeroed header mtime, so the
-  // two-step tar|gzip is fully reproducible across publishes.
-  execFileSync(
-    'tar',
-    ['--format', 'ustar', '--uid', '0', '--gid', '0', '-cf', 'pkg.tar', 'package'],
-    { cwd: dir, env: { ...process.env, COPYFILE_DISABLE: '1' } },
-  );
-  return gzipSync(readFileSync(join(dir, 'pkg.tar')));
+  blocks.push(Buffer.alloc(1024)); // end-of-archive: two zero blocks
+  // Node's gzip writes a zeroed header mtime, so gzip adds no nondeterminism.
+  return gzipSync(Buffer.concat(blocks));
 }
 
 function freePort(): Promise<number> {
