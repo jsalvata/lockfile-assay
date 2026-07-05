@@ -23,6 +23,16 @@ describe('preflight', () => {
       1,
     );
   });
+  it('refuses package.yaml/package.json5 manifests', () => {
+    expect(unsupportedInputs([], ['package.yaml'])).toHaveLength(1);
+    expect(unsupportedInputs([], ['packages/a/package.json5'])).toHaveLength(1);
+    expect(unsupportedInputs([], ['PACKAGE.YAML'])).toHaveLength(1);
+    // plain package.json is the supported manifest — never flagged
+    expect(unsupportedInputs([], ['package.json'])).toEqual([]);
+    expect(unsupportedInputs([f('package.json', '{}')], ['package.json', 'src/index.ts'])).toEqual(
+      [],
+    );
+  });
   it('refuses split lockfiles', () => {
     expect(unsupportedInputs([f('.npmrc', 'shared-workspace-lockfile=false\n')], [])).toHaveLength(
       1,

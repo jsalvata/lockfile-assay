@@ -51,6 +51,11 @@ export function isResolutionInput(path: string, declared: string[]): boolean {
   ) {
     return true;
   }
+  // pnpm reads package.yaml/package.json5 as manifests, but v1 stages only
+  // package.json — a PR introducing one must trigger so preflight can refuse it
+  // (spec §3). Same case-insensitive basename predicate as the pnpmfile entry.
+  const base = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+  if (base === 'package.yaml' || base === 'package.json5') return true;
   return declared.includes(path);
 }
 

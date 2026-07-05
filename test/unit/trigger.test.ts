@@ -17,6 +17,8 @@ describe('trigger', () => {
       '.pnpmfile.cjs',
       'packages/app/.pnpmfile.cjs',
       '.PNPMFILE.CJS',
+      'package.yaml',
+      'packages/a/package.json5',
     ]) {
       expect(isTriggered([p, 'src/index.ts'], declared), p).toBe(true);
     }

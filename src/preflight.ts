@@ -20,11 +20,24 @@ function isPnpmfilePath(path: string): boolean {
   return base.toLowerCase().startsWith('.pnpmfile.');
 }
 
+// pnpm reads package.yaml/package.json5 as workspace-package manifests, but v1
+// staging only materializes package.json. Detected from the head tree's path
+// list (presence-based, case-insensitive basename — like the lockfile-alias guard).
+function isAltManifest(path: string): boolean {
+  const base = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
+  return base === 'package.yaml' || base === 'package.json5';
+}
+
 export function unsupportedInputs(files: StagedFile[], headPaths: string[]): string[] {
   const reasons: string[] = [];
   for (const path of headPaths) {
     if (isPnpmfilePath(path)) {
       reasons.push(`${path}: pnpmfile is executable resolution code — unsupported in v1 (spec §3)`);
+    }
+    if (isAltManifest(path)) {
+      reasons.push(
+        `${path}: pnpm reads package.yaml/package.json5 as a manifest, but v1 stages only package.json — unsupported (spec §3)`,
+      );
     }
   }
   for (const { path, bytes } of files) {
