@@ -3,6 +3,7 @@ import { program } from 'commander';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
 import { exitForError } from './outcome.js';
+import { runPrepush } from './prepush.js';
 import { renderHuman, renderJson } from './report/render.js';
 
 async function main(): Promise<void> {
@@ -25,6 +26,35 @@ async function main(): Promise<void> {
       const r = await runCheck({ base: o.base, head: o.head });
       console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
       process.exitCode = r.exit;
+    });
+  program
+    .command('prepush')
+    .description('git pre-push hook form: check every pushed tip against its PR base')
+    .option('--base <ref>', 'override the per-tip merge-base')
+    .option('--json', 'emit the machine report')
+    .action(async (o: { base?: string; json?: boolean }) => {
+      const stdin = process.stdin.isTTY
+        ? ''
+        : await new Promise<string>((resolve) => {
+            let data = '';
+            process.stdin.on('data', (c) => {
+              data += c;
+            });
+            process.stdin.on('end', () => resolve(data));
+          });
+      const { tips, exit } = await runPrepush({ stdin, baseOverride: o.base });
+      if (o.json) {
+        console.log(
+          JSON.stringify(
+            { schemaVersion: 1, tips: tips.map((t) => JSON.parse(renderJson(t.report))) },
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const t of tips) console.log(renderHuman(t.report));
+      }
+      process.exitCode = exit;
     });
   await program.parseAsync();
 }

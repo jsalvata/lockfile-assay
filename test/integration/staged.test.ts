@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runCheck, runStagedCheck } from '../../src/check.js';
-import { makeFixtureRepo } from '../helpers/fixture.js';
+import { addSelfOrigin, makeFixtureRepo } from '../helpers/fixture.js';
 import { type Registry, startRegistry } from '../helpers/registry.js';
 import { commitAll, sh, writeFiles } from '../helpers/scratch-repo.js';
 
@@ -20,14 +20,6 @@ beforeAll(async () => {
   await registry.publish({ name: 'alpha', version: '1.0.0' });
 });
 afterAll(() => registry.stop());
-
-/** point origin at a clone of itself so origin/HEAD exists */
-function addSelfOrigin(dir: string): void {
-  sh(dir, 'git', ['clone', '-q', '--bare', '.', join(dir, '.self.git')]);
-  sh(dir, 'git', ['remote', 'add', 'origin', join(dir, '.self.git')]);
-  sh(dir, 'git', ['fetch', '-q', 'origin']);
-  sh(dir, 'git', ['remote', 'set-head', 'origin', '-a']);
-}
 
 describe('check --staged', () => {
   it('vacuous on source-only staging; catches a staged tampered lockfile', async () => {

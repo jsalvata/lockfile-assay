@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Registry } from './registry.js';
-import { commitAll, makeRepo } from './scratch-repo.js';
+import { commitAll, makeRepo, sh } from './scratch-repo.js';
 
 export const PNPM_VERSION = process.env.PNPM_FIXTURE_VERSION ?? '10.34.1';
 
@@ -23,6 +23,14 @@ export function relock(dir: string): void {
 
 export function readLock(dir: string): string {
   return readFileSync(join(dir, 'pnpm-lock.yaml'), 'utf8');
+}
+
+/** point origin at a clone of itself so origin/HEAD exists */
+export function addSelfOrigin(dir: string): void {
+  sh(dir, 'git', ['clone', '-q', '--bare', '.', join(dir, '.self.git')]);
+  sh(dir, 'git', ['remote', 'add', 'origin', join(dir, '.self.git')]);
+  sh(dir, 'git', ['fetch', '-q', 'origin']);
+  sh(dir, 'git', ['remote', 'set-head', 'origin', '-a']);
 }
 
 /**
