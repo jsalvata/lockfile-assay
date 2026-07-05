@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { program } from 'commander';
 import { runCheck, runStagedCheck } from './check.js';
-import { CannotEvaluate, UsageError } from './errors.js';
+import { CannotEvaluate, StagingError, UsageError } from './errors.js';
 import { exitForError } from './outcome.js';
 import { renderHuman, renderJson } from './report/render.js';
 
@@ -34,6 +34,10 @@ main().catch((e: unknown) => {
     console.error(`usage error: ${e.message}`);
   } else if (e instanceof CannotEvaluate) {
     console.error(`cannot evaluate: ${e.message}`);
+  } else if (e instanceof StagingError) {
+    // hostile staged content — fail hard (exit 3), but surface the offending
+    // path the structured error carries, which e.message alone drops
+    console.error(`${e.message}: ${e.path}`);
   } else {
     console.error(e instanceof Error ? e : String(e));
   }

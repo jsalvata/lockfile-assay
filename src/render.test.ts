@@ -33,4 +33,17 @@ describe('render', () => {
     expect(j.outcome).toBe('mismatch');
     expect(j.tool.name).toBe('lockfile-assay');
   });
+
+  it('json report surfaces the cannot-evaluate reason so consumers can tell degrade causes apart', () => {
+    const j = JSON.parse(
+      renderJson({
+        outcome: { kind: 'cannot-evaluate', reason: 'registry down: connection refused' },
+        mode: 'off',
+        base: null,
+        head: 'INDEX',
+      }),
+    );
+    expect(j.outcome).toBe('cannot-evaluate');
+    expect(j.reason).toBe('registry down: connection refused');
+  });
 });

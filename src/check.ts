@@ -80,9 +80,12 @@ export async function runCheck(opts: {
  * commit-time form (spec §8): head is the index tree, base is the merge-base
  * with the remote default branch, and the trigger is the STAGED increment
  * (HEAD→index) — a commit staging no resolution input passes vacuously.
- * Anything that prevents evaluation degrades to `cannot-evaluate` (exit 0):
- * a broken local environment must never brick a commit; the anchored CI
- * check still gates the merge.
+ * A broken local environment degrades to `cannot-evaluate` (exit 0) rather
+ * than bricking the commit: no origin default branch, no merge-base, an
+ * unavailable toolchain (can't launch pnpm to read its version), and a failed
+ * derivation (resolver/network) all become `cannot-evaluate`. Hostile staged
+ * content (`StagingError`) still fails hard — that is not a broken env. The
+ * anchored CI check still gates the merge in every degraded case.
  */
 export async function runStagedCheck(
   opts: { cwd?: string; memo?: MemoHook | null } = {},
@@ -180,7 +183,26 @@ async function evaluate(opts: {
   const dir = mkdtempSync(join(tmpdir(), 'lockfile-assay-'));
   materialize(files, dir);
 
-  const effective = effectivePnpmVersion(dir);
+  let effective: string;
+  try {
+    effective = effectivePnpmVersion(dir);
+  } catch (e) {
+    // can't even launch the toolchain (offline corepack download of a bumped
+    // pin, spawn failure): same failClosed distinction as derive — the CI form
+    // fails red, the local forms degrade so a broken env never bricks a commit
+    // (spec §8). A SKEW (version determined but != pin) is a real finding below.
+    if (opts.failClosed) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    return result(
+      {
+        kind: 'cannot-evaluate',
+        reason: `cannot determine pnpm version (toolchain unavailable): ${msg}`,
+      },
+      mode,
+      base,
+      headLabel,
+    );
+  }
   if (effective !== pin.version) {
     return result(
       { kind: 'toolchain-skew', pinned: pin.version, effective },

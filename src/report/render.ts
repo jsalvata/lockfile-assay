@@ -62,6 +62,7 @@ export function diffExcerpt(committed: Buffer | null, derived: Buffer, maxLines 
 export function renderJson(r: ReportInput): string {
   const memo = r.outcome.kind === 'pass' ? r.outcome.memo : undefined;
   const reasons = r.outcome.kind === 'unsupported-input' ? r.outcome.reasons : undefined;
+  const reason = r.outcome.kind === 'cannot-evaluate' ? r.outcome.reason : undefined;
   const skew =
     r.outcome.kind === 'toolchain-skew'
       ? { pinned: r.outcome.pinned, effective: r.outcome.effective }
@@ -77,6 +78,7 @@ export function renderJson(r: ReportInput): string {
       toolchain: skew,
       memo,
       reasons,
+      reason,
       delta: r.deltas,
       diffExcerpt: r.diffExcerpt,
       remedy: r.remedy,
