@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto';
 import type { MemoHook } from '../check.js';
 import { INVOCATION } from '../derive.js';
+import { toolVersion } from '../version.js';
 import { EPOCH, inputsHash } from './key.js';
 import type { MemoRecord, MemoStore } from './store.js';
 
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 
-const TOOL_VERSION = process.env.npm_package_version ?? 'unknown';
+// Read from package.json, NOT `npm_package_version` — that env var is unset when
+// a git hook invokes node directly, which would stamp every record 'unknown'
+// (spec §12 Q7). Computed once at module load.
+const TOOL_VERSION = toolVersion();
 
 /**
  * Defense-in-depth (C3 carry-forward): `store.get` casts the fetched JSON to

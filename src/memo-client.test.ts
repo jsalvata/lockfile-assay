@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -137,6 +137,31 @@ describe('makeMemoClient — record (write gate, spec §8)', () => {
     expect(Date.parse(stored?.derivedAt ?? '')).toBeGreaterThanOrEqual(before);
   });
 
+  // Fix (spec §12 Q7): provenance must record the REAL tool version. The version
+  // is read from package.json, NOT `npm_package_version` — that env var is unset
+  // when a git hook invokes node directly, which used to stamp every record
+  // 'unknown' and defeat the diagnostic purpose.
+  it('records the package.json toolVersion (not "unknown") even when npm_package_version is unset', async () => {
+    const saved = process.env.npm_package_version;
+    delete process.env.npm_package_version; // emulate a git-hook invocation (env var unset)
+    try {
+      const pkgVersion = JSON.parse(
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+      ).version as string;
+
+      const store = memStore();
+      const client = makeMemoClient(store, { write: true, pnpmVersion: '10.34.1' });
+      await client.record(FILES, DERIVED);
+
+      const stored = await store.get(EPOCH, inputsHash(FILES, INVOCATION));
+      expect(stored?.toolVersion).toBe(pkgVersion);
+      expect(stored?.toolVersion).not.toBe('unknown');
+    } finally {
+      if (saved === undefined) delete process.env.npm_package_version;
+      else process.env.npm_package_version = saved;
+    }
+  });
+
   it('pnpmVersion defaults to "unknown" when omitted', async () => {
     const store = memStore();
     const client = makeMemoClient(store, { write: true });
@@ -224,6 +249,19 @@ describe('originRepo (spec §8)', () => {
 
   it('returns null for a non-github remote', () => {
     execFileSync('git', ['remote', 'add', 'origin', 'git@gitlab.com:octo/assay.git'], { cwd: dir });
+    expect(originRepo(dir)).toBeNull();
+  });
+
+  // host anchor: `github.com` must be the ACTUAL host, not a substring of it.
+  // Without the anchor these lookalike hosts wrongly parse as `o/n` and a memo
+  // write could target an unintended github.com repo.
+  it('returns null for the ssh lookalike git@notgithub.com:o/n.git', () => {
+    execFileSync('git', ['remote', 'add', 'origin', 'git@notgithub.com:o/n.git'], { cwd: dir });
+    expect(originRepo(dir)).toBeNull();
+  });
+
+  it('returns null for the https lookalike https://notgithub.com/o/n', () => {
+    execFileSync('git', ['remote', 'add', 'origin', 'https://notgithub.com/o/n'], { cwd: dir });
     expect(originRepo(dir)).toBeNull();
   });
 });

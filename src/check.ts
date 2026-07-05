@@ -193,7 +193,10 @@ async function evaluate(opts: {
   const committed = catFile(head, 'pnpm-lock.yaml', cwd);
 
   const memoHit = (await opts.memo?.consult(files, committed)) ?? null;
-  if (memoHit) return result({ kind: 'pass', memo: memoHit }, mode, base, headLabel);
+  // Require an EXPLICIT true hit before skipping the derive — the single most
+  // security-critical line (a hit → SKIPPED check). Moot-but-defensive: the
+  // client only ever returns `{hit:true,...}` or null today.
+  if (memoHit?.hit === true) return result({ kind: 'pass', memo: memoHit }, mode, base, headLabel);
 
   const dir = mkdtempSync(join(tmpdir(), 'lockfile-assay-'));
   materialize(files, dir);

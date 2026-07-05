@@ -25,6 +25,11 @@ export function originRepo(cwd?: string): string | null {
   const r = git(['remote', 'get-url', 'origin'], { cwd });
   if (r.status !== 0) return null;
   const url = r.stdout.toString().trim();
-  const m = /github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(url);
+  // Anchor `github.com` to the actual HOST: it must be immediately preceded by
+  // `@` (ssh: `git@github.com:`) or `://` (https, with an optional `user@`
+  // before the host). Without this anchor `github\.com` matches anywhere, so
+  // `notgithub.com`/`evilgithub.com` would wrongly parse as an owner/name and a
+  // memo write could target an unintended github.com repo.
+  const m = /(?:@|:\/\/(?:[^/@]*@)?)github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(url);
   return m?.[1] ?? null;
 }
