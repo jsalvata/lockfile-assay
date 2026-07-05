@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 export function sh(cwd: string, cmd: string, args: string[]): string {
-  return execFileSync(cmd, args, { cwd, encoding: 'utf8' });
+  // strip npm_config_* vars (mirrors relock/derivationEnv): the pnpm run-script
+  // driving vitest injects npm_config_registry etc., which outrank a fixture's
+  // .npmrc and would let pnpm resolve from real npmjs instead of the hermetic
+  // registry. Harmless for git; hermetic for pnpm.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !/^npm_config_/i.test(key)),
+  );
+  return execFileSync(cmd, args, { cwd, encoding: 'utf8', env });
 }
 
 /** git repo in a temp dir; returns its path. files = { 'relative/path': 'content' } */
