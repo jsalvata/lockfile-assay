@@ -22,6 +22,11 @@ describe('preflight', () => {
     expect(unsupportedInputs([f('pnpm-workspace.yaml', 'pnpmfile: ./h.cjs\n')], [])).toHaveLength(
       1,
     );
+    // globalPnpmfile in workspace yaml (camelCase, pnpm ≥ 10) — same setting the
+    // .npmrc scan already catches as global-pnpmfile; must be caught here too.
+    expect(
+      unsupportedInputs([f('pnpm-workspace.yaml', 'globalPnpmfile: ./h.cjs\n')], []),
+    ).toHaveLength(1);
   });
   it('refuses package.yaml/package.json5 manifests', () => {
     expect(unsupportedInputs([], ['package.yaml'])).toHaveLength(1);

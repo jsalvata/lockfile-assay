@@ -6,7 +6,7 @@ const NPMRC_KEYS = /^\s*(global-pnpmfile|pnpmfile|ignore-pnpmfile)\s*=/m;
 // inline `#`/`;` comments allowed (no bare `$` anchor so trailing content can't
 // defeat the match).
 const NPMRC_SPLIT = /^\s*shared-workspace-lockfile\s*=\s*(["']?)false\1\s*(?:[#;]|$)/m;
-const WS_KEYS = /^\s*(pnpmfile|ignorePnpmfile)\s*:/m;
+const WS_KEYS = /^\s*(globalPnpmfile|pnpmfile|ignorePnpmfile)\s*:/m;
 // YAML booleans are case-insensitive on the value (false/False/FALSE), keys are
 // not. No quote tolerance: the yaml parser reads a *quoted* value as the truthy
 // string "false", so pnpm keeps the shared lockfile — such a repo is valid and

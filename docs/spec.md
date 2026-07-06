@@ -447,8 +447,11 @@ queue whose target branch advanced without touching resolution inputs, a re-run 
 the same pair, a push that changed only source files — identical bytes, memo hit, no
 registry roll. A rebase that moves base's lockfile misses and re-derives — correct:
 §7's base drift is a genuinely different derivation. (The `packageManager` pin rides
-inside a staged manifest, so the pnpm version is implicitly part of the key; the §3
-skew pre-check still runs.)
+inside a staged manifest, so the pnpm version is implicitly part of the key. A memo
+**hit** therefore skips the §3 skew pre-check — no derivation runs, so the runner's
+live toolchain is irrelevant; the remembered pass was minted under the pinned
+toolchain, which is part of the key. The skew pre-check runs only on the live-derive
+path, per §13's flow.)
 
 **Consult — the memo may only short-circuit to a pass.**
 

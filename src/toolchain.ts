@@ -11,7 +11,10 @@ export function parsePin(rootManifest: Buffer | null): Pin {
   } catch {
     throw new UsageError('head root package.json is not valid JSON');
   }
-  const m = typeof pm === 'string' ? /^pnpm@(\S+)$/.exec(pm) : null;
+  // Capture the version and drop any `+build` metadata: `corepack use` writes
+  // `pnpm@10.34.1+sha512.<hash>`, but `pnpm --version` reports bare `10.34.1`, so
+  // the skew check must compare against the version component only (spec §3).
+  const m = typeof pm === 'string' ? /^pnpm@([^+\s]+)(?:\+\S+)?$/.exec(pm) : null;
   if (!m?.[1]) throw new UsageError('packageManager must pin pnpm (e.g. "pnpm@10.34.1") — spec §3');
   return { version: m[1] };
 }

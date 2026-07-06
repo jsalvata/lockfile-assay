@@ -29,6 +29,18 @@ describe('toolchain', () => {
     );
   });
 
+  it('parsePin drops corepack +build metadata so the skew check compares clean', () => {
+    // `corepack use pnpm@10` writes this hash-suffixed form, but `pnpm --version`
+    // reports bare `10.34.1` — the version component must match to avoid a spurious skew.
+    expect(
+      parsePin(Buffer.from(JSON.stringify({ packageManager: 'pnpm@10.34.1+sha512.abc123def456' }))),
+    ).toEqual({ version: '10.34.1' });
+    // prerelease tags (before any +build) are preserved
+    expect(parsePin(Buffer.from(JSON.stringify({ packageManager: 'pnpm@11.0.0-beta.2' })))).toEqual(
+      { version: '11.0.0-beta.2' },
+    );
+  });
+
   it('derivationEnv strips npm_config_* so env cannot outrank the staged .npmrc', () => {
     const env = derivationEnv({
       npm_config_registry: 'http://evil/',
