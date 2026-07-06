@@ -28,7 +28,7 @@ import { bytesEqual } from './verdict.js';
 
 export type MemoHook = {
   consult(files: StagedFile[], committed: Buffer | null): Promise<MemoProvenance | null>;
-  record(files: StagedFile[], derived: Buffer): Promise<void>;
+  record(files: StagedFile[], derived: Buffer, pnpmVersion?: string): Promise<void>;
 };
 
 export type CheckResult = {
@@ -252,7 +252,7 @@ async function evaluate(opts: {
   }
 
   if (bytesEqual(committed, derived.lockfile)) {
-    await opts.memo?.record(files, derived.lockfile);
+    await opts.memo?.record(files, derived.lockfile, effective);
     return result({ kind: 'pass' }, mode, base, headLabel, {
       toolchain: { pinned: pin.version, effective },
     });

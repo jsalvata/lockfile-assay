@@ -56,12 +56,15 @@ export function makeMemoClient(
       if (!isMemoRecord(record) || record.derivedLockfileSha256 !== sha256(committed)) return null;
       return { hit: true, derivedAt: record.derivedAt, toolVersion: record.toolVersion };
     },
-    async record(files, derived) {
+    async record(files, derived, pnpmVersion) {
       if (!opts.write) return;
       await store.put(EPOCH, inputsHash(files, INVOCATION), {
         derivedLockfileSha256: sha256(derived),
         toolVersion: TOOL_VERSION,
-        pnpmVersion: opts.pnpmVersion ?? 'unknown',
+        // The effective pnpm version comes from the call site (check.ts, where the
+        // derivation just ran) — the store construction can't know it. Fall back to
+        // the construction opt, then 'unknown', so provenance is real (spec §8).
+        pnpmVersion: pnpmVersion ?? opts.pnpmVersion ?? 'unknown',
         derivedAt: new Date().toISOString(),
       });
     },

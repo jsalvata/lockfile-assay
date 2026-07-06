@@ -137,6 +137,17 @@ describe('makeMemoClient — record (write gate, spec §8)', () => {
     expect(Date.parse(stored?.derivedAt ?? '')).toBeGreaterThanOrEqual(before);
   });
 
+  // The effective pnpm version is known only at the call site (check.ts, post-derive),
+  // not at construction — so a per-call version overrides the construction opt, and
+  // that is what real records carry (spec §8 provenance, was always 'unknown' before).
+  it('a per-call pnpmVersion (from check.ts) overrides the construction opt', async () => {
+    const store = memStore();
+    const client = makeMemoClient(store, { write: true, pnpmVersion: 'construction-default' });
+    await client.record(FILES, DERIVED, '9.12.0');
+    const stored = await store.get(EPOCH, inputsHash(FILES, INVOCATION));
+    expect(stored?.pnpmVersion).toBe('9.12.0');
+  });
+
   // Fix (spec §12 Q7): provenance must record the REAL tool version. The version
   // is read from package.json, NOT `npm_package_version` — that env var is unset
   // when a git hook invokes node directly, which used to stamp every record
