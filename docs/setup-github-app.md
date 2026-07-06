@@ -15,13 +15,13 @@ author controls the workflow and the runner, but not the App's private key — s
 even though the check runs with a real writer token in a PR-triggered job, a
 malicious PR cannot forge a record.
 
-> **This document describes the design-intended setup.** A pre-implementation
-> validation spike (`docs/spike-memo-store.md`) proves the chain on a scratch
-> repo before the memo ships — the ruleset naming the App as the memo branch's
-> sole pusher, in-workflow token minting, and Contents API `GET`/`PUT`
-> including the write race. Points below tagged **(TBD — spike)** are asserted
-> from the design and will be pinned to observed behavior by that spike; do not
-> treat them as measured yet.
+> **This setup is validated.** The validation spike
+> ([`docs/spike-memo-store.md`](spike-memo-store.md)) ran on this repo (2026-07-06)
+> and confirmed the whole chain — the ruleset naming the App as the memo branch's
+> sole pusher (a `jsalvata` push and a write-permitted `GITHUB_TOKEN` PUT were both
+> rejected; only the App wrote), in-workflow token minting, and Contents API
+> `GET`/`PUT` including the write race. The formerly-TBD points below are now
+> pinned to observed behavior and cite the spike.
 
 ## Prerequisites
 
@@ -100,12 +100,15 @@ ruleset) so the memo branch can be changed by the App and no one else:
   everyone else — including repo admins pushing directly — is refused
   server-side.
 
-> **(TBD — spike):** the exact ruleset rule set that yields "App-only writer"
-> (Restrict creations/updates/deletions with the App on the bypass list, vs. a
-> push ruleset, vs. a classic branch-protection restriction) will be confirmed
-> by the validation spike. The store's write path already tolerates either
-> Contents-API conflict status GitHub returns on a losing race (see step 7), so
-> the ruleset choice does not change CLI behavior.
+> **Confirmed by the spike.** A **repository ruleset** targeting
+> `refs/heads/lockfile-assay/memo` with rules **Restrict creations + updates +
+> deletions + block force-pushes** and the App as the **only** bypass actor
+> (`actor_type: Integration`, `bypass_mode: always`) yields the App-only writer.
+> Measured: a `jsalvata` `git push` was rejected `GH013: Cannot update this
+> protected ref`, and a `GITHUB_TOKEN` with `contents: write` got **HTTP 409** (not
+> 201) on a Contents `PUT` — so it is the ruleset, not the token's permissions,
+> that blocks non-App writers. The API call that creates this ruleset is
+> `POST /repos/{owner}/{repo}/rulesets` (no UI required).
 
 ## 6. Wire the reference workflow
 
@@ -170,11 +173,9 @@ After the branch and ruleset exist:
    will both try to `PUT`; the loser gets a Contents-API conflict and swallows
    it silently, because same-key records are equivalent.
 
-   > **(TBD — spike):** the exact conflict status GitHub's Contents API returns
-   > on a losing concurrent `PUT` (409 vs 422) will be confirmed by the
-   > validation spike. The store already treats **both** as "lost the race,
-   > equivalent record exists" and retries nothing, so the verdict is
-   > unaffected either way — this doc does not assert which status is observed.
+   > **Confirmed by the spike:** a losing (`sha`-less) `PUT` to an existing key
+   > returns **HTTP 422**. The store treats both 422 and 409 as "lost the race,
+   > equivalent record exists" and retries nothing, so the verdict is unaffected.
 
 ## What can go wrong (and why it's safe)
 
