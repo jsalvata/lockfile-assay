@@ -34,21 +34,20 @@ export function declaredPatchPaths(
 }
 
 // Whole-path patterns for the resolution inputs a change can move (spec §3). Any
-// match means the assay must evaluate; the set over-approximates on purpose, so
-// an inert extra match is harmless while a miss is not. The lockfile, pnpmfile
-// and alt-manifest patterns are case-insensitive — pnpm resolves those basenames
-// case-insensitively on case-preserving filesystems, so an alias like
-// `PNPM-LOCK.YAML` is still the lockfile (matching src/staging.ts and preflight's
-// presence scan). package.json/.npmrc stay case-sensitive, matching what staging
-// actually materializes.
+// match means the assay must evaluate. The trigger only ever over-approximates:
+// firing spuriously costs one derivation, missing a real input is a hole — so
+// every pattern is case-insensitive. On a case-preserving filesystem pnpm
+// resolves these basenames case-insensitively, and matching more paths here is
+// always safe. The exact-case rules that decide what actually feeds the derive
+// (src/staging.ts) or blocks it (src/preflight.ts) live there, not here.
 const RESOLUTION_INPUT_PATTERNS: RegExp[] = [
-  /(?:^|\/)pnpm-lock\.yaml$/i, // the lockfile itself, in any case
-  /^pnpm-workspace\.yaml$/, // root workspace manifest
-  /(?:^|\/)package\.json$/, // every package manifest, any depth
-  /(?:^|\/)\.npmrc$/, // every npmrc, any depth
-  /^patches\//, // conventional patch directory
-  /\.(?:patch|diff)$/, // patch files anywhere
-  /(?:^|\/)\.pnpmfile\./i, // executable resolution hook, in any case
+  /(?:^|\/)pnpm-lock\.yaml$/i, // the lockfile itself
+  /^pnpm-workspace\.yaml$/i, // root workspace manifest
+  /(?:^|\/)package\.json$/i, // every package manifest, any depth
+  /(?:^|\/)\.npmrc$/i, // every npmrc, any depth
+  /^patches\//i, // conventional patch directory
+  /\.(?:patch|diff)$/i, // patch files anywhere
+  /(?:^|\/)\.pnpmfile\./i, // executable resolution hook
   /(?:^|\/)package\.(?:yaml|json5)$/i, // alt manifest formats pnpm also reads
 ];
 

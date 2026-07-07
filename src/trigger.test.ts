@@ -20,6 +20,9 @@ describe('trigger', () => {
       '.PNPMFILE.CJS',
       'package.yaml',
       'packages/a/package.json5',
+      'PACKAGE.JSON',
+      'sub/.NPMRC',
+      'tools/FIX.DIFF',
     ]) {
       expect(isTriggered([p, 'src/index.ts'], declared), p).toBe(true);
     }
