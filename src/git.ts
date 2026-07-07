@@ -64,6 +64,11 @@ export function diffNamesIndex(cwd?: string): string[] {
 export function remoteDefaultBranch(cwd?: string): string | null {
   const r = git(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], { cwd });
   if (r.status === 0) return r.stdout.toString().trim().replace('refs/remotes/', '');
-  const probe = git(['rev-parse', '--verify', '--quiet', 'origin/main'], { cwd });
-  return probe.status === 0 ? 'origin/main' : null;
+  // No origin/HEAD symref (never fetched, or a bare mirror). Fall back to the
+  // conventional default names before giving up — main first, then master.
+  for (const name of ['origin/main', 'origin/master']) {
+    const probe = git(['rev-parse', '--verify', '--quiet', name], { cwd });
+    if (probe.status === 0) return name;
+  }
+  return null;
 }
