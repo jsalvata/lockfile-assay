@@ -157,7 +157,7 @@ describe('makeMemoClient — record (write gate, spec §8)', () => {
     delete process.env.npm_package_version; // emulate a git-hook invocation (env var unset)
     try {
       const pkgVersion = JSON.parse(
-        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+        readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
       ).version as string;
 
       const store = memStore();

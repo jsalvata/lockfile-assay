@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { git } from '../git.js';
+import { remoteOriginUrl } from '../git.js';
 
 /**
  * Discover a GitHub token for memo reads/writes (spec §8). Chain, first hit
@@ -22,9 +22,8 @@ export function discoverToken(env: NodeJS.ProcessEnv = process.env): string | nu
  * Returns null when there is no origin or it is not a github remote.
  */
 export function originRepo(cwd?: string): string | null {
-  const r = git(['remote', 'get-url', 'origin'], { cwd });
-  if (r.status !== 0) return null;
-  const url = r.stdout.toString().trim();
+  const url = remoteOriginUrl(cwd);
+  if (url === null) return null;
   // Anchor `github.com` to the actual HOST: it must be immediately preceded by
   // `@` (ssh: `git@github.com:`) or `://` (https, with an optional `user@`
   // before the host). Without this anchor `github\.com` matches anywhere, so
