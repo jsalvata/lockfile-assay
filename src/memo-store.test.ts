@@ -113,6 +113,13 @@ describe('contentsApiStore', () => {
     expect(await s.get(1, HASH)).toEqual(RECORD);
   });
 
+  it('isolates records by epoch — a record under one epoch is a miss under the next', async () => {
+    const s = store();
+    await s.put(1, HASH, RECORD);
+    expect(await s.get(1, HASH)).toEqual(RECORD); // same epoch → hit
+    expect(await s.get(2, HASH)).toBeNull(); // an EPOCH bump lands on a different path ⇒ miss
+  });
+
   it('addresses records at memo/<epoch>/<hh>/<hash>.json with the branch as ref', async () => {
     const s = store();
     await s.get(1, HASH);
