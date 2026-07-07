@@ -79,12 +79,34 @@ from base, every entry the PR changed must re-derive honestly, so even a reflexi
 refresh converges to a safe lockfile. Read the failure report to tell the two apart: a
 version delta reads as drift; a `tarball:` URL or a novel edge reads as an attack.
 
-## Scope (v1)
+## Supported environments & limitations
 
-pnpm only; one root `pnpm-lock.yaml` (pnpm monorepos are in scope — they share a single
-lockfile). See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics,
-the failure-report contract, the local `prepush` / `--staged` forms, the derivation
-memo, prior art, and the roadmap.
+**Package manager:** pnpm only. The repo must pin its pnpm version with a
+`packageManager: "pnpm@<version>"` field in the root `package.json` (the Corepack
+format); the assay re-derives with exactly that pnpm. npm and Yarn are out of scope for
+v1.
+
+**Repository shape:** a single root `pnpm-lock.yaml`. pnpm workspaces (monorepos) are
+supported precisely because they share that one lockfile.
+
+**Runner:** Node ≥ 22 with `git` and Corepack available — the defaults on the standard CI
+images.
+
+Even on pnpm, a handful of resolution inputs are deliberately **not honoured**. The assay
+refuses them as `unsupported-input` (a spurious mismatch, never a silent pass) rather than
+derive a result it can't trust — under `enforce` that fails the check, so the PR must drop
+them or move the behaviour into files a reviewer can read:
+
+- **`.pnpmfile.cjs` / `global-pnpmfile`** — executable resolution hooks the assay cannot
+  reproduce safely.
+- **`package.yaml` / `package.json5`** — alternative manifest formats pnpm reads alongside
+  `package.json`, which v1 does not stage.
+- **`shared-workspace-lockfile=false`** — splits the single root lockfile the assay relies
+  on.
+
+See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics, the
+failure-report contract, the local `prepush` / `--staged` forms, the derivation memo,
+prior art, and the roadmap.
 
 ## License
 

@@ -10,7 +10,7 @@
     "ci"
   ],
   "license": "MIT",
-  "author": "Jordi Salvat",
+  "author": "Jordi Salvat i Alabart",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jsalvata/lockfile-assay.git"
