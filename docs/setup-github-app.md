@@ -129,6 +129,22 @@ is minted. Add the workflow as a **required status check** on your protected
 branch, and protect the workflow file itself per spec §6's anchor caveat (org
 rulesets / required workflows) so a PR can't edit its own gate.
 
+> **Protect the App secret from PR-triggered workflows.** A required status check
+> gates *merging*, not *running* — it does nothing to stop a same-repo PR from
+> minting the token in its own job by editing this workflow or adding a second one.
+> Because the memo's integrity rests entirely on the App being the only writer, a
+> same-repo insider (or a compromised contributor or agent) who can mint the token
+> could `PUT` a poisoned record that a later clean PR then rides to a false pass.
+> To close this for same-repo PRs, put `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY` on
+> a **GitHub Environment gated by required reviewers** (Settings → Environments →
+> New environment → Required reviewers) instead of as plain repo secrets, and add
+> `environment: <name>` to the token-minting job — the token is then minted only
+> after a human approves the run. (Forks are already safe: a `pull_request` from a
+> fork has no access to secrets, so the memo is simply disabled and the check
+> re-derives live.) Spec §8 accepts this residual "raises the stakes by one notch"
+> exposure for v1; the roadmap's external verification App removes it — but gate
+> the secret now if you enable the memo.
+
 The repo the store writes to is discovered from the checkout's `origin` remote,
 and the memo branch defaults to `lockfile-assay/memo` — matching steps 4–5. If
 either the token or `origin` is absent the memo is silently disabled and the

@@ -18,6 +18,12 @@ on:
 jobs:
   assay:
     runs-on: ubuntu-latest
+    # SECURITY: this job mints a memo-writer token from the App secret, and a
+    # required status check does NOT stop a PR from minting it (see
+    # docs/setup-github-app.md section 6). For same-repo PR safety, put
+    # ASSAY_APP_ID / ASSAY_APP_PRIVATE_KEY on a GitHub Environment gated by
+    # required reviewers and enable it here:
+    #   environment: memo-write
     steps:
       - uses: actions/checkout@v4
         with:
