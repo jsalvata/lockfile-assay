@@ -2,6 +2,7 @@
 import { program } from 'commander';
 import { runCheck } from './check.js';
 import { CannotEvaluate, UsageError } from './errors.js';
+import { exitForError } from './outcome.js';
 import { renderHuman, renderJson } from './report/render.js';
 
 async function main(): Promise<void> {
@@ -26,12 +27,10 @@ async function main(): Promise<void> {
 main().catch((e: unknown) => {
   if (e instanceof UsageError) {
     console.error(`usage error: ${e.message}`);
-    process.exitCode = 2;
   } else if (e instanceof CannotEvaluate) {
     console.error(`cannot evaluate: ${e.message}`);
-    process.exitCode = 0;
   } else {
-    console.error(e instanceof Error ? e.message : String(e));
-    process.exitCode = 3;
+    console.error(e instanceof Error ? e : String(e));
   }
+  process.exitCode = exitForError(e);
 });

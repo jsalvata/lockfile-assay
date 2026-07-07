@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { exitCode, type Mode, type Outcome } from '../../src/outcome.js';
+import { CannotEvaluate, UsageError } from '../../src/errors.js';
+import { exitCode, exitForError, type Mode, type Outcome } from '../../src/outcome.js';
 
 const derived = Buffer.from('x');
 const failing: Outcome[] = [
@@ -24,5 +25,18 @@ describe('exitCode', () => {
   it('passing outcomes exit 0 in every mode', () => {
     for (const o of passing)
       for (const m of ['off', 'warn', 'enforce'] as Mode[]) expect(exitCode(o, m)).toBe(0);
+  });
+});
+
+describe('exitForError', () => {
+  it('maps usage mistakes to exit 2', () => {
+    expect(exitForError(new UsageError('bad --base'))).toBe(2);
+  });
+  it('degrades cannot-evaluate to exit 0', () => {
+    expect(exitForError(new CannotEvaluate('no origin/HEAD'))).toBe(0);
+  });
+  it('maps every other throw to the internal-error exit 3', () => {
+    expect(exitForError(new Error('resolver blew up'))).toBe(3);
+    expect(exitForError('not even an error')).toBe(3);
   });
 });
