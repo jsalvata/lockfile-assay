@@ -74,9 +74,11 @@ lockfile carries nothing the visible diff didn't state.
 
 **Trigger.** The PR's **net base→head** diff touches the lockfile or any resolution
 input: `pnpm-lock.yaml`, any `package.json` (any at all — over-triggering is safe,
-under-triggering never is), `.npmrc`, `pnpm-workspace.yaml`, `patches/`, and any path
-named by `patchedDependencies`. PRs that touch none of these are out of scope and
-pass vacuously — decided from one `git diff --name-only`, before config is read.
+under-triggering never is), `.npmrc`, `pnpm-workspace.yaml`, `patches/`, any path
+named by `patchedDependencies`, and any `.pnpmfile.*` (so the PR that introduces
+executable resolution hooks reaches the preflight refusal below rather than passing
+vacuously). PRs that touch none of these are out of scope and pass vacuously —
+decided from one `git diff --name-only`, before config is read.
 
 **Staging.**
 
@@ -94,13 +96,16 @@ adopts pnpm), nothing is staged as cache and the derivation runs from scratch �
 deterministic per the empirics below — with the byte compare deciding as usual; the
 drift surface is then the whole file rather than the changed specs.
 
-**Preflight.** Two head configurations are refused as **unsupported-input** (§5),
+**Preflight.** Three head shapes are refused as **unsupported-input** (§5),
 v1's fail-closed answer to inputs it cannot honor honestly: a **pnpmfile**
 (`.pnpmfile.cjs`, or `pnpmfile`/`ignore-pnpmfile` in config) — executable resolution
 hooks; honoring them is roadmap (§11), since it breaks §8's "nothing executes"
-argument, not §2's (the file is reviewable diff) — and
-**`shared-workspace-lockfile=false`**, which splits the single root lockfile v1
-assumes.
+argument, not §2's (the file is reviewable diff); **`shared-workspace-lockfile=false`**,
+which splits the single root lockfile v1 assumes; and a **non-`package.json` manifest**
+(`package.yaml` or `package.json5`, which pnpm also reads) — v1 stages only
+`package.json`, so a repo using these would otherwise derive against an incomplete
+workspace and mismatch confusingly. A clean refusal beats that; broadening staging to
+the other manifest formats is roadmap (§11).
 
 **Invocation.** In an isolated copy of the staged tree:
 
@@ -126,8 +131,15 @@ serializer is canonical, so bytes don't flake by themselves. Verified empiricall
 (2026-07-04, pnpm 9.12.0 and 10.34.1), pinned as integration tests (§13):
 
 - two independent from-scratch resolves of the same manifest are byte-identical;
-- `pnpm add pkg@range` produces byte-identical output to editing the manifest and
-  re-running the install above — the author path and the checker path agree;
+- re-running the install above on a repo's **committed** manifest reproduces its
+  **committed** lockfile byte-for-byte — the checker path reproduces whatever the
+  author committed, *however* the author edited the manifest. (This is the property
+  the check relies on, and it is what the author↔checker agreement means. Note that
+  two *different* author actions need not agree at the byte level: `pnpm add
+  pkg@range` on pnpm ≥ 10 rewrites the saved specifier to the caret of the resolved
+  version, so it differs from a hand-edit by that one `specifier:` line — irrelevant
+  to the check, which always re-derives from the committed manifest, not from a
+  hypothetical alternative edit.)
 - re-running install on an in-sync tree rewrites nothing (idempotent);
 - locked versions that still satisfy their (possibly changed) ranges are **reused**,
   not re-resolved — only specs whose floor moved above base's lock, and edges new to
@@ -435,8 +447,11 @@ queue whose target branch advanced without touching resolution inputs, a re-run 
 the same pair, a push that changed only source files — identical bytes, memo hit, no
 registry roll. A rebase that moves base's lockfile misses and re-derives — correct:
 §7's base drift is a genuinely different derivation. (The `packageManager` pin rides
-inside a staged manifest, so the pnpm version is implicitly part of the key; the §3
-skew pre-check still runs.)
+inside a staged manifest, so the pnpm version is implicitly part of the key. A memo
+**hit** therefore skips the §3 skew pre-check — no derivation runs, so the runner's
+live toolchain is irrelevant; the remembered pass was minted under the pinned
+toolchain, which is part of the key. The skew pre-check runs only on the live-derive
+path, per §13's flow.)
 
 **Consult — the memo may only short-circuit to a pass.**
 
