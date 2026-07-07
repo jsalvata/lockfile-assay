@@ -25,9 +25,39 @@ already review. A registry redirect, a new dependency, a changed range all remai
 possible — but each is a small, visible, reviewable change. What becomes impossible is
 the lockfile adding *anything* beyond them.
 
+## Supported environments & limitations
+
+**Package manager:** pnpm only — npm and Yarn are out of scope for v1. The assay
+re-derives with the exact pnpm your repo pins via `packageManager` (see the Quickstart).
+
+**Repository shape:** a single root `pnpm-lock.yaml`. pnpm workspaces (monorepos) are
+supported precisely because they share that one lockfile.
+
+**Runner:** Node ≥ 22 with `git` and Corepack available — the defaults on the standard CI
+images.
+
+Even on pnpm, a handful of resolution inputs are deliberately **not honoured**. The assay
+refuses them as `unsupported-input` (a spurious mismatch, never a silent pass) rather than
+derive a result it can't trust — under `enforce` that fails the check, so the PR must drop
+them:
+
+- **`.pnpmfile.cjs` / `global-pnpmfile`** — executable resolution hooks the assay cannot
+  reproduce safely.
+- **`package.yaml` / `package.json5`** — alternative manifest formats pnpm reads alongside
+  `package.json`, which v1 does not stage.
+- **`shared-workspace-lockfile=false`** — splits the single root lockfile the assay relies
+  on.
+
 ## Quickstart
 
-1. Add `.lockfile-assay.json` at the repo root:
+1. Pin pnpm in your root `package.json` (Corepack format) so the assay derives with the
+   same version you develop against:
+
+   ```json
+   { "packageManager": "pnpm@<version>" }
+   ```
+
+2. Add `.lockfile-assay.json` at the repo root:
 
    ```json
    { "mode": "warn" }
@@ -37,7 +67,7 @@ the lockfile adding *anything* beyond them.
    **base** commit, so a PR cannot reconfigure the check that polices it — changing the
    mode requires a separately reviewed PR that lands first.
 
-2. Add a CI step on the protected branch:
+3. Add a CI step on the protected branch:
 
    ```sh
    npx lockfile-assay check --base "$MERGE_BASE" --head HEAD
@@ -78,31 +108,6 @@ reuses every locked entry — drifted and tampered alike — and refreshes nothi
 from base, every entry the PR changed must re-derive honestly, so even a reflexive
 refresh converges to a safe lockfile. Read the failure report to tell the two apart: a
 version delta reads as drift; a `tarball:` URL or a novel edge reads as an attack.
-
-## Supported environments & limitations
-
-**Package manager:** pnpm only. The repo must pin its pnpm version with a
-`packageManager: "pnpm@<version>"` field in the root `package.json` (the Corepack
-format); the assay re-derives with exactly that pnpm. npm and Yarn are out of scope for
-v1.
-
-**Repository shape:** a single root `pnpm-lock.yaml`. pnpm workspaces (monorepos) are
-supported precisely because they share that one lockfile.
-
-**Runner:** Node ≥ 22 with `git` and Corepack available — the defaults on the standard CI
-images.
-
-Even on pnpm, a handful of resolution inputs are deliberately **not honoured**. The assay
-refuses them as `unsupported-input` (a spurious mismatch, never a silent pass) rather than
-derive a result it can't trust — under `enforce` that fails the check, so the PR must drop
-them or move the behaviour into files a reviewer can read:
-
-- **`.pnpmfile.cjs` / `global-pnpmfile`** — executable resolution hooks the assay cannot
-  reproduce safely.
-- **`package.yaml` / `package.json5`** — alternative manifest formats pnpm reads alongside
-  `package.json`, which v1 does not stage.
-- **`shared-workspace-lockfile=false`** — splits the single root lockfile the assay relies
-  on.
 
 See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics, the
 failure-report contract, the local `prepush` / `--staged` forms, the derivation memo,
