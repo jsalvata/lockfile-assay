@@ -17,16 +17,26 @@ function importsOf(file: string): string[] {
   return [...text.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1] as string);
 }
 
+// Allowlist of trust-safe relative imports (spec §13): a trust-path module may
+// import node builtins and these modules only. An allowlist, not a denylist — a
+// denylist silently admits any new sibling (memo/, a future parser) a trust-path
+// module must never reach; enumerate what is permitted instead.
+const TRUST_SAFE = new Set([
+  './errors.js',
+  './outcome.js',
+  './git.js',
+  './staging.js',
+  './preflight.js',
+  './toolchain.js',
+  './derive.js',
+  './verdict.js',
+]);
+
 describe('spec §13 trust-path discipline', () => {
   it('trust-path modules import only node builtins and each other', () => {
     for (const file of TRUST_PATH) {
       for (const imp of importsOf(file)) {
-        const ok =
-          imp.startsWith('node:') ||
-          (imp.startsWith('./') &&
-            !imp.includes('report/') &&
-            !imp.includes('trigger') &&
-            !imp.includes('config'));
+        const ok = imp.startsWith('node:') || TRUST_SAFE.has(imp);
         expect(ok, `${file} imports ${imp}`).toBe(true);
       }
     }
