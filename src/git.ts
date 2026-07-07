@@ -1,12 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { UsageError } from './errors.js';
 
-export type GitResult = { status: number; stdout: Buffer; stderr: Buffer };
+type GitResult = { status: number; stdout: Buffer; stderr: Buffer };
 
-export function git(
-  args: string[],
-  opts: { cwd?: string; stdin?: string | Buffer } = {},
-): GitResult {
+function git(args: string[], opts: { cwd?: string; stdin?: string | Buffer } = {}): GitResult {
   const r = spawnSync('git', args, {
     cwd: opts.cwd,
     input: opts.stdin,
