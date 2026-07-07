@@ -33,30 +33,27 @@ export function declaredPatchPaths(
   return out;
 }
 
+// Whole-path patterns for the resolution inputs a change can move (spec §3). Any
+// match means the assay must evaluate; the set over-approximates on purpose, so
+// an inert extra match is harmless while a miss is not. The lockfile, pnpmfile
+// and alt-manifest patterns are case-insensitive — pnpm resolves those basenames
+// case-insensitively on case-preserving filesystems, so an alias like
+// `PNPM-LOCK.YAML` is still the lockfile (matching src/staging.ts and preflight's
+// presence scan). package.json/.npmrc stay case-sensitive, matching what staging
+// actually materializes.
+const RESOLUTION_INPUT_PATTERNS: RegExp[] = [
+  /(?:^|\/)pnpm-lock\.yaml$/i, // the lockfile itself, in any case
+  /^pnpm-workspace\.yaml$/, // root workspace manifest
+  /(?:^|\/)package\.json$/, // every package manifest, any depth
+  /(?:^|\/)\.npmrc$/, // every npmrc, any depth
+  /^patches\//, // conventional patch directory
+  /\.(?:patch|diff)$/, // patch files anywhere
+  /(?:^|\/)\.pnpmfile\./i, // executable resolution hook, in any case
+  /(?:^|\/)package\.(?:yaml|json5)$/i, // alt manifest formats pnpm also reads
+];
+
 export function isResolutionInput(path: string, declared: string[]): boolean {
-  if (path === 'pnpm-lock.yaml' || path === 'pnpm-workspace.yaml') return true;
-  if (path === 'package.json' || path.endsWith('/package.json')) return true;
-  if (path === '.npmrc' || path.endsWith('/.npmrc')) return true;
-  if (path.startsWith('patches/')) return true;
-  if (path.endsWith('.patch') || path.endsWith('.diff')) return true;
-  // A pnpmfile is executable resolution code — the PR that introduces one must
-  // trigger so preflight can refuse it (spec §3: over-triggering is safe,
-  // under-triggering never is). Same basename predicate as preflight's
-  // presence scan: lowercased for case-insensitive filesystems.
-  if (
-    path
-      .slice(path.lastIndexOf('/') + 1)
-      .toLowerCase()
-      .startsWith('.pnpmfile.')
-  ) {
-    return true;
-  }
-  // pnpm reads package.yaml/package.json5 as manifests, but v1 stages only
-  // package.json — a PR introducing one must trigger so preflight can refuse it
-  // (spec §3). Same case-insensitive basename predicate as the pnpmfile entry.
-  const base = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
-  if (base === 'package.yaml' || base === 'package.json5') return true;
-  return declared.includes(path);
+  return RESOLUTION_INPUT_PATTERNS.some((re) => re.test(path)) || declared.includes(path);
 }
 
 export function isTriggered(changed: string[], declared: string[]): boolean {

@@ -6,6 +6,7 @@ describe('trigger', () => {
     const declared = ['vendor/odd-location.patch2'];
     for (const p of [
       'pnpm-lock.yaml',
+      'PNPM-LOCK.YAML',
       'package.json',
       'packages/app/package.json',
       '.npmrc',
