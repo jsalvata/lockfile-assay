@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { UsageError } from '../../src/errors.js';
-import { catFile, diffNames, lsTreePaths, mergeBase, revParse } from '../../src/git.js';
-import { commitAll, makeRepo, writeFiles } from '../helpers/scratch-repo.js';
+import { commitAll, makeRepo, writeFiles } from '../test/helpers/scratch-repo.js';
+import { UsageError } from './errors.js';
+import { catFile, diffNames, lsTreePaths, mergeBase, revParse } from './git.js';
 
 describe('git plumbing', () => {
   it('revParse resolves and rejects', () => {

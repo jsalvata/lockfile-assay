@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffExcerpt, refreshRecipe, renderJson } from '../../src/report/render.js';
+import { diffExcerpt, refreshRecipe, renderJson } from './report/render.js';
 
 describe('render', () => {
   it('refresh recipe restores base, or deletes when base had none', () => {

@@ -2,10 +2,10 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { StagingError } from '../../src/errors.js';
-import { revParse } from '../../src/git.js';
-import { collectStagedFiles, materialize } from '../../src/staging.js';
-import { commitAll, makeRepo, writeFiles } from '../helpers/scratch-repo.js';
+import { commitAll, makeRepo, writeFiles } from '../test/helpers/scratch-repo.js';
+import { StagingError } from './errors.js';
+import { revParse } from './git.js';
+import { collectStagedFiles, materialize } from './staging.js';
 
 describe('staging', () => {
   it('stages head resolution inputs and the BASE lockfile', () => {

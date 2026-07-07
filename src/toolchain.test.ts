@@ -2,9 +2,9 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { derive } from '../../src/derive.js';
-import { UsageError } from '../../src/errors.js';
-import { derivationEnv, effectivePnpmVersion, parsePin } from '../../src/toolchain.js';
+import { derive } from './derive.js';
+import { UsageError } from './errors.js';
+import { derivationEnv, effectivePnpmVersion, parsePin } from './toolchain.js';
 
 const PNPM = process.env.PNPM_FIXTURE_VERSION ?? '10.34.1';
 

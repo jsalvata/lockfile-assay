@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CannotEvaluate, UsageError } from '../../src/errors.js';
-import { exitCode, exitForError, type Mode, type Outcome } from '../../src/outcome.js';
+import { CannotEvaluate, UsageError } from './errors.js';
+import { exitCode, exitForError, type Mode, type Outcome } from './outcome.js';
 
 const derived = Buffer.from('x');
 const failing: Outcome[] = [

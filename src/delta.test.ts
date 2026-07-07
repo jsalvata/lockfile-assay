@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deltaSummary } from '../../src/report/delta.js';
-import { bytesEqual } from '../../src/verdict.js';
+import { deltaSummary } from './report/delta.js';
+import { bytesEqual } from './verdict.js';
 
 const lock = (pkgs: string[]) =>
   Buffer.from(

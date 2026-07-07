@@ -37,7 +37,7 @@
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:unit": "vitest run test/unit",
+    "test:unit": "vitest run src",
     "test:integration": "vitest run test/integration",
     "lint": "biome check .",
     "format": "biome format --write .",

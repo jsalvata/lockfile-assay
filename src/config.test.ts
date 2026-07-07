@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseConfig } from '../../src/config.js';
-import { UsageError } from '../../src/errors.js';
+import { parseConfig } from './config.js';
+import { UsageError } from './errors.js';
 
 describe('parseConfig', () => {
   it('absent config defaults to off', () => expect(parseConfig(null)).toBe('off'));

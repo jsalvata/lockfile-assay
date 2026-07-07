@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { runCheck } from '../../src/check.js';
-import { revParse } from '../../src/git.js';
-import { commitAll, makeRepo, sh, writeFiles } from '../helpers/scratch-repo.js';
+import { commitAll, makeRepo, sh, writeFiles } from '../test/helpers/scratch-repo.js';
+import { runCheck } from './check.js';
+import { revParse } from './git.js';
 
 const PNPM = process.env.PNPM_FIXTURE_VERSION ?? '10.34.1';
 const manifest = (extra: object = {}) =>

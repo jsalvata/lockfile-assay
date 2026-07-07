@@ -10,7 +10,7 @@ const TRUST_PATH = [
   'derive.ts',
   'verdict.ts',
 ];
-const SRC = join(import.meta.dirname, '../../src');
+const SRC = import.meta.dirname;
 
 function importsOf(file: string): string[] {
   const text = readFileSync(join(SRC, file), 'utf8');

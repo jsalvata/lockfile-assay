@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { declaredPatchPaths, isTriggered } from '../../src/trigger.js';
+import { declaredPatchPaths, isTriggered } from './trigger.js';
 
 describe('trigger', () => {
   it('fires on every resolution input, ignores source files', () => {

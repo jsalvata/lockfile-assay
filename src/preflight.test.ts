@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { unsupportedInputs } from '../../src/preflight.js';
+import { unsupportedInputs } from './preflight.js';
 
 const f = (path: string, s: string) => ({ path, bytes: Buffer.from(s) });
 
