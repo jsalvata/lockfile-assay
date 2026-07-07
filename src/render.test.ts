@@ -38,12 +38,13 @@ describe('render', () => {
     const j = JSON.parse(
       renderJson({
         outcome: { kind: 'cannot-evaluate', reason: 'registry down: connection refused' },
-        mode: 'off',
+        mode: 'unknown',
         base: null,
         head: 'INDEX',
       }),
     );
     expect(j.outcome).toBe('cannot-evaluate');
     expect(j.reason).toBe('registry down: connection refused');
+    expect(j.mode).toBe('unknown');
   });
 });

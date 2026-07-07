@@ -18,7 +18,7 @@ const TOOL_VERSION: string = (() => {
 
 export type ReportInput = {
   outcome: Outcome;
-  mode: Mode;
+  mode: Mode | 'unknown';
   base: string | null;
   head: string;
   toolchain?: { pinned: string; effective: string };

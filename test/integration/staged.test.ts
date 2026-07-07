@@ -45,6 +45,7 @@ describe('check --staged', () => {
     const r = await runStagedCheck({ cwd: f.dir });
     expect(r.outcome.kind).toBe('cannot-evaluate');
     expect(r.exit).toBe(0);
+    expect(r.report.mode).toBe('unknown'); // no base read yet — not a misleading 'off'
   });
 });
 

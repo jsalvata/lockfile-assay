@@ -31,7 +31,12 @@ export type MemoHook = {
   record(files: StagedFile[], derived: Buffer): Promise<void>;
 };
 
-export type CheckResult = { outcome: Outcome; mode: Mode; exit: 0 | 1; report: ReportInput };
+export type CheckResult = {
+  outcome: Outcome;
+  mode: Mode | 'unknown';
+  exit: 0 | 1;
+  report: ReportInput;
+};
 
 function result(
   outcome: Outcome,
@@ -135,11 +140,14 @@ export async function runStagedCheck(
 
 function cannotEvaluate(reason: string): CheckResult {
   const outcome: Outcome = { kind: 'cannot-evaluate', reason };
+  // These degrades happen before a base exists to read config from, so the mode
+  // is genuinely undetermined — report 'unknown', not a misleading 'off' a --json
+  // consumer could read as "the assay is disabled in this repo".
   return {
     outcome,
-    mode: 'off',
+    mode: 'unknown',
     exit: 0,
-    report: { outcome, mode: 'off', base: null, head: 'INDEX' },
+    report: { outcome, mode: 'unknown', base: null, head: 'INDEX' },
   };
 }
 

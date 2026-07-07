@@ -60,11 +60,13 @@ export async function runPrepush(opts: {
     } catch (e) {
       if (e instanceof CannotEvaluate) {
         const outcome = { kind: 'cannot-evaluate', reason: e.message } as const;
+        // no base yet (no origin default / no merge-base for this tip): the mode
+        // is undetermined, so report 'unknown' rather than a misleading 'off'
         results.push({
           outcome,
-          mode: 'off',
+          mode: 'unknown',
           exit: 0,
-          report: { outcome, mode: 'off', base: null, head: tip.localSha },
+          report: { outcome, mode: 'unknown', base: null, head: tip.localSha },
         });
       } else throw e;
     }
