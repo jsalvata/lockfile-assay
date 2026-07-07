@@ -109,6 +109,28 @@ from base, every entry the PR changed must re-derive honestly, so even a reflexi
 refresh converges to a safe lockfile. Read the failure report to tell the two apart: a
 version delta reads as drift; a `tarball:` URL or a novel edge reads as an attack.
 
+## Local hooks
+
+The same check runs where the author still is: at commit time on the staged index, at
+push time on every pushed tip. Both are a courtesy preview of the required check — a
+broken local environment (no reachable registry, no derivable base) degrades to a
+notice and exit 0 instead of blocking. With
+[husky](https://typicode.github.io/husky/) (any hook manager works — these are
+plain git hooks):
+
+```sh
+# .husky/pre-commit
+pnpm exec lockfile-assay check --staged
+```
+
+```sh
+# .husky/pre-push
+pnpm exec lockfile-assay prepush
+```
+
+The escape hatch is git's native `--no-verify`, on either hook — skipping a courtesy
+preview changes nothing about the required check.
+
 See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics, the
 failure-report contract, the local `prepush` / `--staged` forms, the derivation memo,
 prior art, and the roadmap.

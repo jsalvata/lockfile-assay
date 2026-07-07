@@ -48,6 +48,7 @@ describe('spec §13 trust-path discipline', () => {
       'config.ts',
       'check.ts',
       'cli.ts',
+      'prepush.ts',
       'outcome.ts',
       'errors.ts',
       ...TRUST_PATH,
