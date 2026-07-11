@@ -13,15 +13,37 @@ import { runPrepush } from './prepush.js';
 import { renderHuman, renderJson } from './report/render.js';
 
 /**
+ * Resolve the memo's credentials, or the reason they are missing (spec §8). The
+ * memo needs BOTH a github.com `origin` and a discoverable token; origin is
+ * checked first so the common non-GitHub case never spawns `gh auth token`.
+ * Exported so buildMemo and the `--memo-write` warning share one source of truth
+ * (and so it is unit-testable with an injected cwd / env).
+ */
+export function resolveMemo(
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): { repo: string; token: string } | { unavailable: string } {
+  const repo = originRepo(opts.cwd);
+  if (!repo) return { unavailable: 'origin is not a github.com remote' };
+  const token = discoverToken(opts.env);
+  if (!token) {
+    return {
+      unavailable: 'no token (set LOCKFILE_ASSAY_TOKEN or GITHUB_TOKEN, or run `gh auth login`)',
+    };
+  }
+  return { repo, token };
+}
+
+/**
  * Assemble the derivation-memo hook (spec §8). Discovery is LAZY (via
  * lazyMemoClient): a check touches the memo only inside evaluate()'s
  * consult/record, past the trigger + mode + preflight gates, so the common
  * source-only run (a vacuous pass) never spends the credential subprocesses.
- * When it does resolve, it needs BOTH a github.com `origin` and a discoverable
- * token — if either is absent the memo is silently disabled (null): a check
- * never fails, warns, or blocks for lack of memo credentials (the
- * credential-less/offline degrade). Origin is resolved first so the common
- * non-GitHub case never spawns `gh auth token`.
+ * If the credentials are absent the memo is disabled (null) — on the READ paths
+ * that is a silent offline degrade (a check never fails or blocks for lack of
+ * memo credentials). The WRITING form warns instead (see the `--memo-write`
+ * guard below): there a disabled memo means passing runs are never recorded, so
+ * later runs re-derive and an unchanged lockfile can spuriously mismatch on
+ * registry drift.
  *
  * `write` is true only for the anchored CI form (`check --memo-write`); the
  * local forms (`check --staged`, `prepush`) hard-code false — they may READ
@@ -30,11 +52,8 @@ import { renderHuman, renderJson } from './report/render.js';
  */
 function buildMemo(write: boolean): MemoHook {
   return lazyMemoClient(() => {
-    const repo = originRepo();
-    if (!repo) return null;
-    const token = discoverToken();
-    if (!token) return null;
-    return makeMemoClient(contentsApiStore({ repo, token }), { write });
+    const m = resolveMemo();
+    return 'unavailable' in m ? null : makeMemoClient(contentsApiStore(m), { write });
   });
 }
 
@@ -79,6 +98,21 @@ export function buildProgram(): Command {
           return;
         }
         if (!o.base) throw new UsageError('--base <ref> is required');
+        if (o.memoWrite) {
+          // The writing form intends to record. If the memo can't initialize, say
+          // so: without records, later runs re-derive and an honest, unchanged
+          // lockfile can spuriously mismatch on registry drift — a setup problem,
+          // never a check failure. (resolveMemo re-runs on consult, but the writing
+          // form is CI-only and not latency-sensitive.)
+          const m = resolveMemo();
+          if ('unavailable' in m) {
+            console.error(
+              `warning: --memo-write is set but the memo is unavailable (${m.unavailable}); ` +
+                'passing derivations will not be recorded, so later runs re-derive and an ' +
+                'unchanged lockfile may mismatch on registry drift. See docs/setup-github-app.md.',
+            );
+          }
+        }
         const r = await runCheck({ base: o.base, head: o.head, memo: buildMemo(!!o.memoWrite) });
         console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
         process.exitCode = r.exit;
