@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { INVOCATION } from './derive.js';
-import { EPOCH, inputsHash } from './memo/key.js';
+import { INVOCATION } from '../derive.js';
+import { EPOCH, inputsHash } from './key.js';
 
 const f = (path: string, s: string) => ({ path, bytes: Buffer.from(s) });
 

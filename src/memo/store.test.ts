@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { contentsApiStore, type MemoRecord } from './memo/store.js';
+import { contentsApiStore, type MemoRecord } from './store.js';
 
 const HASH = `ab${'0'.repeat(62)}`;
 const REPO = 'octo/assay-memo';

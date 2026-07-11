@@ -4,13 +4,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { MemoHook } from './check.js';
-import { INVOCATION } from './derive.js';
-import { discoverToken, originRepo } from './memo/auth.js';
-import { lazyMemoClient, makeMemoClient } from './memo/client.js';
-import { EPOCH, inputsHash } from './memo/key.js';
-import type { MemoRecord, MemoStore } from './memo/store.js';
-import type { StagedFile } from './staging.js';
+import type { MemoHook } from '../check.js';
+import { INVOCATION } from '../derive.js';
+import type { StagedFile } from '../staging.js';
+import { discoverToken, originRepo } from './auth.js';
+import { lazyMemoClient, makeMemoClient } from './client.js';
+import { EPOCH, inputsHash } from './key.js';
+import type { MemoRecord, MemoStore } from './store.js';
 
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 
@@ -158,7 +158,7 @@ describe('makeMemoClient — record (write gate, spec §8)', () => {
     delete process.env.npm_package_version; // emulate a git-hook invocation (env var unset)
     try {
       const pkgVersion = JSON.parse(
-        readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+        readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
       ).version as string;
 
       const store = memStore();
