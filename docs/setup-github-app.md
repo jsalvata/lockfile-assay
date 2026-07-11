@@ -15,11 +15,6 @@ author controls the workflow and the runner, but not the App's private key — s
 even though the check runs with a real writer token in a PR-triggered job, a
 malicious PR cannot forge a record.
 
-This whole chain — an App-only-writable branch, in-workflow token minting, and
-the Contents API `GET`/`PUT`/conflict behavior the store relies on — was
-validated end to end on this repo; see the [spike findings](spike-memo-store.md)
-for the measured results.
-
 ## Prerequisites
 
 - Admin on the repo (to create the App-install, secrets, and a ruleset).
@@ -99,12 +94,6 @@ ruleset) so the memo branch can be changed by the App and no one else:
   the sole identity that may push to (create/update/delete) this branch;
   everyone else — including repo admins pushing directly — is refused
   server-side.
-
-Prefer the API to the UI? Create the same ruleset with
-`POST /repos/{owner}/{repo}/rulesets`, listing the App as the sole
-`bypass_actor`. (The spike verified this yields an App-only writer — a normal
-`git push` and even a `contents: write` `GITHUB_TOKEN` were both refused; see the
-[findings](spike-memo-store.md).)
 
 ## 6. Wire the check into CI
 
@@ -195,8 +184,7 @@ After the branch and ruleset exist:
 
 3. **The write race is harmless.** Two concurrent passing runs on the same key
    will both try to `PUT`; the loser gets a Contents-API conflict (HTTP 422) and
-   swallows it silently, because same-key records are equivalent. (The spike
-   measured this — see the [findings](spike-memo-store.md).)
+   swallows it silently, because same-key records are equivalent.
 
 ## What can go wrong (and why it's safe)
 
