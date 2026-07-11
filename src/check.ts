@@ -201,9 +201,9 @@ async function evaluate(opts: {
   const dir = mkdtempSync(join(tmpdir(), 'lockfile-assay-'));
   materialize(files, dir);
 
-  let effective: string;
+  let pnpmVersion: string;
   try {
-    effective = effectivePnpmVersion(dir);
+    pnpmVersion = effectivePnpmVersion(dir);
   } catch (e) {
     // can't even launch the toolchain (offline corepack download of a bumped
     // pin, spawn failure): same failClosed distinction as derive — the CI form
@@ -221,14 +221,14 @@ async function evaluate(opts: {
       headLabel,
     );
   }
-  if (effective !== pin.version) {
+  if (pnpmVersion !== pin.version) {
     return result(
-      { kind: 'toolchain-skew', pinned: pin.version, effective },
+      { kind: 'toolchain-skew', pinned: pin.version, effective: pnpmVersion },
       mode,
       base,
       headLabel,
       {
-        toolchain: { pinned: pin.version, effective },
+        toolchain: { pinned: pin.version, effective: pnpmVersion },
       },
     );
   }
@@ -252,14 +252,14 @@ async function evaluate(opts: {
   }
 
   if (bytesEqual(committed, derived.lockfile)) {
-    await opts.memo?.record(files, derived.lockfile, effective);
+    await opts.memo?.record(files, derived.lockfile, pnpmVersion);
     return result({ kind: 'pass' }, mode, base, headLabel, {
-      toolchain: { pinned: pin.version, effective },
+      toolchain: { pinned: pin.version, effective: pnpmVersion },
     });
   }
 
   return result({ kind: 'mismatch', committed, derived: derived.lockfile }, mode, base, headLabel, {
-    toolchain: { pinned: pin.version, effective },
+    toolchain: { pinned: pin.version, effective: pnpmVersion },
     deltas: deltaSummary(committed, derived.lockfile),
     diffExcerpt: diffExcerpt(committed, derived.lockfile),
     remedy: refreshRecipe(baseHasLock ? base : null),
