@@ -15,13 +15,10 @@ author controls the workflow and the runner, but not the App's private key — s
 even though the check runs with a real writer token in a PR-triggered job, a
 malicious PR cannot forge a record.
 
-> **This setup is validated.** The validation spike
-> ([`docs/spike-memo-store.md`](spike-memo-store.md)) ran on this repo (2026-07-06)
-> and confirmed the whole chain — the ruleset naming the App as the memo branch's
-> sole pusher (a `jsalvata` push and a write-permitted `GITHUB_TOKEN` PUT were both
-> rejected; only the App wrote), in-workflow token minting, and Contents API
-> `GET`/`PUT` including the write race. The formerly-TBD points below are now
-> pinned to observed behavior and cite the spike.
+This whole chain — an App-only-writable branch, in-workflow token minting, and
+the Contents API `GET`/`PUT`/conflict behavior the store relies on — was
+validated end to end on this repo; see the [spike findings](spike-memo-store.md)
+for the measured results.
 
 ## Prerequisites
 
@@ -68,6 +65,9 @@ The reference workflow (`examples/assay.yml`) reads exactly these two names via
 installation token per run. The CLI never sees the private key — only the
 minted token, in env as `LOCKFILE_ASSAY_TOKEN`.
 
+Step 6 hardens these two secrets behind a GitHub Environment; if you do that,
+add them at the Environment scope rather than (or in addition to) the repo scope.
+
 ## 4. Create the orphan memo branch
 
 The store lives on a dedicated branch — default `lockfile-assay/memo` — that is
@@ -92,69 +92,77 @@ ruleset) so the memo branch can be changed by the App and no one else:
 
 - **Target:** the branch `lockfile-assay/memo` (an exact-name / fnmatch include
   targeting just that ref, so the rest of the repo is untouched).
-- **Rules:** enable **Restrict creations**, **Restrict updates**, and
-  **Restrict deletions** — this makes the branch writable only by actors on the
-  ruleset's **bypass list**.
+- **Rules:** enable **Restrict creations**, **Restrict updates**, **Restrict
+  deletions**, and **Block force pushes** — this makes the branch writable only
+  by actors on the ruleset's **bypass list**.
 - **Bypass list:** add **only the GitHub App** (the one from step 1). It becomes
   the sole identity that may push to (create/update/delete) this branch;
   everyone else — including repo admins pushing directly — is refused
   server-side.
 
-> **Confirmed by the spike.** A **repository ruleset** targeting
-> `refs/heads/lockfile-assay/memo` with rules **Restrict creations + updates +
-> deletions + block force-pushes** and the App as the **only** bypass actor
-> (`actor_type: Integration`, `bypass_mode: always`) yields the App-only writer.
-> Measured: a `jsalvata` `git push` was rejected `GH013: Cannot update this
-> protected ref`, and a `GITHUB_TOKEN` with `contents: write` got **HTTP 409** (not
-> 201) on a Contents `PUT` — so it is the ruleset, not the token's permissions,
-> that blocks non-App writers. The API call that creates this ruleset is
-> `POST /repos/{owner}/{repo}/rulesets` (no UI required).
+Prefer the API to the UI? Create the same ruleset with
+`POST /repos/{owner}/{repo}/rulesets`, listing the App as the sole
+`bypass_actor`. (The spike verified this yields an App-only writer — a normal
+`git push` and even a `contents: write` `GITHUB_TOKEN` were both refused; see the
+[findings](spike-memo-store.md).)
 
-## 6. Wire the reference workflow
+## 6. Wire the check into CI
 
-Copy [`examples/assay.yml`](../examples/assay.yml) into
-`.github/workflows/assay.yml`. It:
+Run the *writing* form (`--memo-write`) from a required-check workflow. The local
+hook forms (`--staged`, `prepush`) never write, so this workflow is the only
+place a record is minted. Pick one of two ways to invoke it:
 
-1. checks out with `fetch-depth: 0` (the check needs base history),
-2. sets up Node 22,
-3. mints the App installation token with
-   `actions/create-github-app-token@v1` (id `memo-token`), and
-4. runs `npx --yes lockfile-assay check --base "origin/${{ github.base_ref }}"
-   --head HEAD --memo-write --json` with `LOCKFILE_ASSAY_TOKEN` set to that
-   token.
+**Option A — copy the reference workflow.** Copy
+[`examples/assay.yml`](../examples/assay.yml) into `.github/workflows/assay.yml`.
+It checks out with `fetch-depth: 0` (the check needs base history), sets up
+Node 22, mints the App installation token with `actions/create-github-app-token@v1`,
+and runs `lockfile-assay check --base "origin/${{ github.base_ref }}" --head HEAD
+--memo-write --json`.
 
-`--memo-write` is what makes this the *writing* form — the local hook forms
-(`--staged`, `prepush`) never write, so this workflow is the only place a record
-is minted. Add the workflow as a **required status check** on your protected
-branch, and protect the workflow file itself per spec §6's anchor caveat (org
-rulesets / required workflows) so a PR can't edit its own gate.
+**Option B — use the packaged action.** Reference the composite action
+([`action.yml`](../action.yml)) instead of copying the YAML — it wraps the same
+`--memo-write` invocation. You still check out and mint the token first:
 
-> **Protect the App secret from PR-triggered workflows.** A required status check
-> gates *merging*, not *running* — it does nothing to stop a same-repo PR from
-> minting the token in its own job by editing this workflow or adding a second one.
-> Because the memo's integrity rests entirely on the App being the only writer, a
-> same-repo insider (or a compromised contributor or agent) who can mint the token
-> could `PUT` a poisoned record that a later clean PR then rides to a false pass.
-> To close this for same-repo PRs, put `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY` on
-> a **GitHub Environment gated by required reviewers** (Settings → Environments →
-> New environment → Required reviewers) instead of as plain repo secrets, and add
-> `environment: <name>` to the token-minting job — the token is then minted only
-> after a human approves the run. (Forks are already safe: a `pull_request` from a
-> fork has no access to secrets, so the memo is simply disabled and the check
-> re-derives live.) Spec §8 accepts this residual "raises the stakes by one notch"
-> exposure for v1; the roadmap's external verification App removes it — but gate
-> the secret now if you enable the memo.
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- uses: actions/create-github-app-token@v1
+  id: memo-token
+  with:
+    app-id: ${{ secrets.ASSAY_APP_ID }}
+    private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+- uses: jsalvata/lockfile-assay@v1
+  with:
+    base: origin/${{ github.base_ref }}
+    head: HEAD
+    memo-token: ${{ steps.memo-token.outputs.token }}
+```
+
+Then, whichever option you chose:
+
+1. **Add the workflow as a required status check** on your protected branch.
+2. **Protect the workflow file itself** (spec §6's anchor caveat — org rulesets /
+   required workflows) so a PR can't edit its own gate.
+3. **Gate the App secret behind a GitHub Environment.** A required status check
+   gates *merging*, not *running* — it does nothing to stop a same-repo PR from
+   minting the token in its own job by editing this workflow or adding a second
+   one. Since the memo's integrity rests on the App being the only writer, a
+   same-repo insider (or a compromised contributor or agent) who can mint the
+   token could `PUT` a poisoned record that a later clean PR then rides to a false
+   pass. To close this: put `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY` on a **GitHub
+   Environment gated by required reviewers** (Settings → Environments → New
+   environment → Required reviewers) instead of plain repo secrets, and add
+   `environment: <name>` to the token-minting job — the token is then minted only
+   after a human approves the run. (Forks are already safe: a `pull_request` from
+   a fork gets no secrets, so the memo is simply disabled and the check re-derives
+   live.) Spec §8 accepts this residual "raises the stakes by one notch" exposure
+   for v1; the roadmap's external verification App removes it.
 
 The repo the store writes to is discovered from the checkout's `origin` remote,
-and the memo branch defaults to `lockfile-assay/memo` — matching steps 4–5. If
-either the token or `origin` is absent the memo is silently disabled and the
-check re-derives live; it never fails for lack of memo credentials.
-
-> **Follow-up (this repo's own CI):** lockfile-assay dogfoods the check in
-> `.github/workflows/ci.yml`, but without `--memo-write` — the App and memo
-> branch are not yet set up on the lockfile-assay repo itself. Once they are
-> (steps 1–5 above, plus minting the token in that workflow), the dogfood step
-> can gain `--memo-write`.
+and the memo branch is `lockfile-assay/memo` — matching steps 4–5. If either the
+token or `origin` is absent the memo is silently disabled and the check re-derives
+live; it never fails for lack of memo credentials.
 
 > A private-registry consumer must add the `~/.npmrc` file step (see
 > Prerequisites) to this workflow before the `lockfile-assay` step.
@@ -186,12 +194,9 @@ After the branch and ruleset exist:
    (served from the record rather than re-resolved).
 
 3. **The write race is harmless.** Two concurrent passing runs on the same key
-   will both try to `PUT`; the loser gets a Contents-API conflict and swallows
-   it silently, because same-key records are equivalent.
-
-   > **Confirmed by the spike:** a losing (`sha`-less) `PUT` to an existing key
-   > returns **HTTP 422**. The store treats both 422 and 409 as "lost the race,
-   > equivalent record exists" and retries nothing, so the verdict is unaffected.
+   will both try to `PUT`; the loser gets a Contents-API conflict (HTTP 422) and
+   swallows it silently, because same-key records are equivalent. (The spike
+   measured this — see the [findings](spike-memo-store.md).)
 
 ## What can go wrong (and why it's safe)
 
