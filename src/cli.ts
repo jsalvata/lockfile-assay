@@ -41,8 +41,8 @@ function buildMemo(write: boolean): MemoHook {
 /**
  * Build the commander program fresh (not commander's shared singleton) so a test
  * can drive it in-process — `buildProgram().parseAsync(['check', …], { from:
- * 'user' })` — without spawning the binary. `main()` runs it; importing this
- * module does not (the entry-point guard at the foot of the file).
+ * 'user' })` — without spawning the binary. The entry-point guard at the foot
+ * of the file runs it; importing this module does not.
  */
 export function buildProgram(): Command {
   const program = new Command();
@@ -120,10 +120,6 @@ export function buildProgram(): Command {
   return program;
 }
 
-async function main(): Promise<void> {
-  await buildProgram().parseAsync();
-}
-
 /**
  * True only when this module is the process entry point — not when a test (or
  * any other module) imports it. argv[1] is resolved through symlinks so an
@@ -140,18 +136,20 @@ function isEntryPoint(): boolean {
 }
 
 if (isEntryPoint()) {
-  main().catch((e: unknown) => {
-    if (e instanceof UsageError) {
-      console.error(`usage error: ${e.message}`);
-    } else if (e instanceof CannotEvaluate) {
-      console.error(`cannot evaluate: ${e.message}`);
-    } else if (e instanceof StagingError) {
-      // hostile staged content — fail hard (exit 3), but surface the offending
-      // path the structured error carries, which e.message alone drops
-      console.error(`${e.message}: ${e.path}`);
-    } else {
-      console.error(e instanceof Error ? e : String(e));
-    }
-    process.exitCode = exitForError(e);
-  });
+  buildProgram()
+    .parseAsync()
+    .catch((e: unknown) => {
+      if (e instanceof UsageError) {
+        console.error(`usage error: ${e.message}`);
+      } else if (e instanceof CannotEvaluate) {
+        console.error(`cannot evaluate: ${e.message}`);
+      } else if (e instanceof StagingError) {
+        // hostile staged content — fail hard (exit 3), but surface the offending
+        // path the structured error carries, which e.message alone drops
+        console.error(`${e.message}: ${e.path}`);
+      } else {
+        console.error(e instanceof Error ? e : String(e));
+      }
+      process.exitCode = exitForError(e);
+    });
 }
