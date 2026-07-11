@@ -6,30 +6,36 @@ import type { MemoHook } from './check.js';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
 import { discoverToken, originRepo } from './memo/auth.js';
-import { makeMemoClient } from './memo/client.js';
+import { lazyMemoClient, makeMemoClient } from './memo/client.js';
 import { contentsApiStore } from './memo/store.js';
 import { exitForError } from './outcome.js';
 import { runPrepush } from './prepush.js';
 import { renderHuman, renderJson } from './report/render.js';
 
 /**
- * Assemble the derivation-memo hook (spec §8). Needs BOTH a github.com
- * `origin` and a discoverable token — if either is absent the memo is silently
- * disabled (null): a check never fails, warns, or blocks for lack of memo
- * credentials (the credential-less/offline degrade). Origin is resolved first
- * so the common non-GitHub case never spawns `gh auth token`.
+ * Assemble the derivation-memo hook (spec §8). Discovery is LAZY (via
+ * lazyMemoClient): a check touches the memo only inside evaluate()'s
+ * consult/record, past the trigger + mode + preflight gates, so the common
+ * source-only run (a vacuous pass) never spends the credential subprocesses.
+ * When it does resolve, it needs BOTH a github.com `origin` and a discoverable
+ * token — if either is absent the memo is silently disabled (null): a check
+ * never fails, warns, or blocks for lack of memo credentials (the
+ * credential-less/offline degrade). Origin is resolved first so the common
+ * non-GitHub case never spawns `gh auth token`.
  *
  * `write` is true only for the anchored CI form (`check --memo-write`); the
  * local forms (`check --staged`, `prepush`) hard-code false — they may READ
  * the memo but never write (spec §8: local runs hold no writer credential;
  * the branch ruleset refuses non-App pushes anyway, but belt-and-braces).
  */
-function buildMemo(write: boolean): MemoHook | null {
-  const repo = originRepo();
-  if (!repo) return null;
-  const token = discoverToken();
-  if (!token) return null;
-  return makeMemoClient(contentsApiStore({ repo, token }), { write });
+function buildMemo(write: boolean): MemoHook {
+  return lazyMemoClient(() => {
+    const repo = originRepo();
+    if (!repo) return null;
+    const token = discoverToken();
+    if (!token) return null;
+    return makeMemoClient(contentsApiStore({ repo, token }), { write });
+  });
 }
 
 /**
