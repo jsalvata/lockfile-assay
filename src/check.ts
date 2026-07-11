@@ -193,8 +193,7 @@ async function evaluate(opts: {
   const committed = catFile(head, 'pnpm-lock.yaml', cwd);
 
   const memoHit = (await opts.memo?.consult(files, committed)) ?? null;
-  // Require an EXPLICIT true hit before skipping the derive — the single most
-  // security-critical line (a hit → SKIPPED check). Moot-but-defensive: the
+  // Require an EXPLICIT true hit before skipping the derive. Moot-but-defensive: the
   // client only ever returns `{hit:true,...}` or null today.
   if (memoHit?.hit === true) return result({ kind: 'pass', memo: memoHit }, mode, base, headLabel);
 
