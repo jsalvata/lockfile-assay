@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { program } from 'commander';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { Command } from 'commander';
 import type { MemoHook } from './check.js';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
@@ -30,7 +32,14 @@ function buildMemo(write: boolean): MemoHook | null {
   return makeMemoClient(contentsApiStore({ repo, token }), { write });
 }
 
-async function main(): Promise<void> {
+/**
+ * Build the commander program fresh (not commander's shared singleton) so a test
+ * can drive it in-process — `buildProgram().parseAsync(['check', …], { from:
+ * 'user' })` — without spawning the binary. `main()` runs it; importing this
+ * module does not (the entry-point guard at the foot of the file).
+ */
+export function buildProgram(): Command {
+  const program = new Command();
   program.name('lockfile-assay').description('Prove your lockfile is untampered.');
   program
     .command('check')
@@ -48,6 +57,15 @@ async function main(): Promise<void> {
         memoWrite?: boolean;
         json?: boolean;
       }) => {
+        // Local hook forms never write the memo (spec §8), so --memo-write with
+        // --staged can't be honored — the staged path builds a read-only memo
+        // below. Reject the combo instead of silently ignoring the flag, which
+        // would leave a hook author believing records are being written.
+        if (o.staged && o.memoWrite) {
+          throw new UsageError(
+            '--memo-write cannot be combined with --staged (local hook forms never write the memo)',
+          );
+        }
         if (o.staged) {
           const r = await runStagedCheck({ memo: buildMemo(false) });
           console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
@@ -93,20 +111,41 @@ async function main(): Promise<void> {
       }
       process.exitCode = exit;
     });
-  await program.parseAsync();
+  return program;
 }
 
-main().catch((e: unknown) => {
-  if (e instanceof UsageError) {
-    console.error(`usage error: ${e.message}`);
-  } else if (e instanceof CannotEvaluate) {
-    console.error(`cannot evaluate: ${e.message}`);
-  } else if (e instanceof StagingError) {
-    // hostile staged content — fail hard (exit 3), but surface the offending
-    // path the structured error carries, which e.message alone drops
-    console.error(`${e.message}: ${e.path}`);
-  } else {
-    console.error(e instanceof Error ? e : String(e));
+async function main(): Promise<void> {
+  await buildProgram().parseAsync();
+}
+
+/**
+ * True only when this module is the process entry point — not when a test (or
+ * any other module) imports it. argv[1] is resolved through symlinks so an
+ * installed `.bin/lockfile-assay` shim still counts as the entry point.
+ */
+function isEntryPoint(): boolean {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  try {
+    return realpathSync(arg) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
   }
-  process.exitCode = exitForError(e);
-});
+}
+
+if (isEntryPoint()) {
+  main().catch((e: unknown) => {
+    if (e instanceof UsageError) {
+      console.error(`usage error: ${e.message}`);
+    } else if (e instanceof CannotEvaluate) {
+      console.error(`cannot evaluate: ${e.message}`);
+    } else if (e instanceof StagingError) {
+      // hostile staged content — fail hard (exit 3), but surface the offending
+      // path the structured error carries, which e.message alone drops
+      console.error(`${e.message}: ${e.path}`);
+    } else {
+      console.error(e instanceof Error ? e : String(e));
+    }
+    process.exitCode = exitForError(e);
+  });
+}
