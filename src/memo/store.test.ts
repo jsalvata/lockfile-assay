@@ -133,6 +133,31 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     expect(rec?.epoch).toBe(EPOCH);
   });
 
+  it('a memo hit posts a success verdict with no embedded record (design §4)', async () => {
+    // consult() returns a hit off `listRecords`, so `record()` is never called
+    // and `pending` stays null — the record already lives on an earlier commit,
+    // so re-embedding it on this run's verdict would be redundant, not wrong.
+    const posted: Parameters<Backend['postVerdict']>[0][] = [];
+    const backend: Backend = {
+      listRecords: async () => [good],
+      postVerdict: async (v) => {
+        posted.push(v);
+      },
+    };
+    const d = new MemoDriver(backend, true);
+    const prov = await d.consult(files, committed);
+    expect(prov).toMatchObject({ hit: true });
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'pass' } as Outcome,
+      exit: 0,
+      headSha: 'deadbeef',
+    });
+    expect(warnings).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].conclusion).toBe('success');
+    expect(parseRecord(posted[0].summary)).toBeNull();
+  });
+
   it('posts a failure verdict with no record on a mismatch (never memoised)', async () => {
     const { backend, posted } = capturingBackend();
     const d = new MemoDriver(backend, true);
