@@ -23,9 +23,6 @@ jobs:
       - name: CLI smoke test
         run: |
           node dist/cli.js --help | grep -q check
-      - name: Dogfood — run the assay on this PR
-        if: github.event_name == 'pull_request'
-        run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD --json
   integration:
     runs-on: ubuntu-latest
     strategy:

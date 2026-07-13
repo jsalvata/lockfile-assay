@@ -1,203 +1,168 @@
-# Setting up the derivation memo store
+# Setting up the anchored check
 
-The derivation memo (spec §8) lets a trusted CI run record that *these exact
-staged inputs derive this lockfile*, so later runs on the identical inputs
-short-circuit to a pass instead of re-rolling the registry-drift dice (§7). A
-memo can **only** turn a live re-derive into a remembered pass — it never
-produces a failure — so the only thing that must be trustworthy is **who is
-allowed to write records**.
+The anchored form of the check (spec §6, §8) posts its verdict as a **check run
+under a dedicated GitHub App** and memoises passing derivations inside those
+check runs, so identical inputs later short-circuit to a pass instead of
+re-rolling the registry-drift dice (§7). A memo can **only** turn a live
+re-derive into a remembered pass — it never produces a failure — so the only
+thing that must be trustworthy is **who can write records**, and here that is
+whoever can mint the App's token.
 
-The store is an orphan branch in your own repo, and the writer is a **dedicated
-GitHub App** whose installation token is the only identity a branch ruleset lets
-push to it. GitHub enforces that ACL server-side; the branch's append-only
-history is the audit ledger; revocation is `git rm` (itself history). The PR
-author controls the workflow and the runner, but not the App's private key — so
-even though the check runs with a real writer token in a PR-triggered job, a
-malicious PR cannot forge a record.
+The App is an **identity, not a service** — there is nothing to host. Its token
+is minted inside the anchored workflow run, and three server-enforced facts
+carry the trust:
+
+1. The anchored workflow triggers on **`pull_request_target`**, so the
+   definition that runs is the **base branch's** — a PR cannot edit its own
+   gate, and a `pull_request_target` workflow added by a PR does not trigger.
+2. The App's credentials live on an **Environment restricted to base-context
+   runs** — a `pull_request` workflow (including one the PR itself adds) runs
+   on the PR's merge ref, fails the branch policy, and is refused the secrets.
+3. Branch protection requires the verdict check **from this App's identity** —
+   a same-named check posted with a PR job's `GITHUB_TOKEN` comes from the
+   built-in Actions identity and cannot satisfy it.
 
 ## Prerequisites
 
-- Admin on the repo (to create the App-install, secrets, and a ruleset).
-- The check already wired as described in the [README](../README.md) /
-  spec §6 (registry reachability and the pnpm version pinned by
-  `packageManager`).
+- Admin on the repo (App install, environment, branch protection).
+- The check already wired as described in the [README](../README.md) / spec §6
+  (registry reachability and the pnpm version pinned by `packageManager`).
 - **Private registries:** the derivation strips `npm_config_*` environment
   variables so ambient env can't silently override the staged `.npmrc`
   (spec §3 / §6). If your lockfile resolves from a private registry, supply
   those credentials via the **runner's `~/.npmrc` FILE**, not `npm_config_*`
-  env vars — add a step to your workflow that writes `~/.npmrc` before the
-  check runs. This is unchanged by the memo; it is called out here so
-  private-registry adopters aren't surprised.
+  env vars — add a step to the anchored workflow that writes `~/.npmrc` before
+  the check runs.
 
 ## 1. Create a dedicated GitHub App
 
 Create a new GitHub App (org or personal account — Settings → Developer
 settings → GitHub Apps → New GitHub App).
 
-- **Permissions:** Repository permissions → **Contents: Read and write**. Grant
-  **nothing else** — the App's entire job is committing memo records to one
-  branch. A narrower blast radius is the point of using a named App over a
-  broad token.
+- **Permissions:** Repository permissions → **Checks: Read and write**. Grant
+  **nothing else** — the App's entire job is posting the assay's verdicts. A
+  narrower blast radius is the point of using a named App over a broad token.
 - **Webhooks:** not needed — uncheck "Active".
 - After creating it, note the **App ID** and generate a **private key** (a
-  `.pem` download). Both go into repo secrets below.
+  `.pem` download). Both go into the environment secrets below.
 
 ## 2. Install the App on the repo
 
 From the App's page → Install App → install it on the repo (or the specific
-repos) that will use the memo. The install grants the App its Contents
-read/write on those repos; the ruleset in step 5 narrows *where* it may write.
+repos) that will run the anchored check.
 
-## 3. Store the credentials as repo secrets
+## 3. Store the credentials on a branch-restricted environment
 
-In the repo (Settings → Secrets and variables → Actions), add:
+In the repo (Settings → Environments → New environment):
 
-- `ASSAY_APP_ID` — the App ID from step 1.
-- `ASSAY_APP_PRIVATE_KEY` — the full contents of the `.pem` private key.
+- Name it — say, `lockfile-assay`.
+- Under **Deployment branches and tags**, choose **Selected branches and
+  tags** and add the protected branch (e.g. `main`). Do **not** add required
+  reviewers — the branch policy is the gate, and it needs no per-run approval.
+- Add two **environment secrets**: `ASSAY_APP_ID` (the App ID) and
+  `ASSAY_APP_PRIVATE_KEY` (the full `.pem` contents).
 
-The reference workflow (`examples/assay.yml`) reads exactly these two names via
-`actions/create-github-app-token@v1`, which exchanges them for a short-lived
-installation token per run. The CLI never sees the private key — only the
-minted token, in env as `LOCKFILE_ASSAY_TOKEN`.
+Why this gates: environment access is evaluated against the ref a run executes
+on. A `pull_request_target` run executes in base context (`main`) and is
+admitted; any `pull_request` run — including one from a workflow the PR itself
+adds — executes on the PR's merge ref and is refused the secrets server-side.
 
-Step 6 hardens these two secrets behind a GitHub Environment; if you do that,
-add them at the Environment scope rather than (or in addition to) the repo scope.
-
-## 4. Create the orphan memo branch
-
-The store lives on a dedicated branch — default `lockfile-assay/memo` — that is
-never checked out; the CLI reads and writes it entirely through the Contents
-API. Create it empty:
-
-```sh
-git switch --orphan lockfile-assay/memo
-git commit --allow-empty -m "lockfile-assay memo store"
-git push origin lockfile-assay/memo
-git switch -   # back to your working branch
-```
-
-Records land at `memo/<epoch>/<hash[0:2]>/<hash>.json` — one ~1 KB JSON per key
-under a two-hex fanout. Even a bump-heavy repo writes single-digit megabytes a
-year (spec §8), so no pruning is needed for v1.
-
-## 5. Protect the branch with a ruleset (App = sole writer)
-
-Create a **repository ruleset** (Settings → Rules → Rulesets → New branch
-ruleset) so the memo branch can be changed by the App and no one else:
-
-- **Target:** the branch `lockfile-assay/memo` (an exact-name / fnmatch include
-  targeting just that ref, so the rest of the repo is untouched).
-- **Rules:** enable **Restrict creations**, **Restrict updates**, **Restrict
-  deletions**, and **Block force pushes** — this makes the branch writable only
-  by actors on the ruleset's **bypass list**.
-- **Bypass list:** add **only the GitHub App** (the one from step 1). It becomes
-  the sole identity that may push to (create/update/delete) this branch;
-  everyone else — including repo admins pushing directly — is refused
-  server-side.
-
-## 6. Wire the check into CI
-
-Run the *writing* form (`--memo-write`) from a required-check workflow. The local
-hook forms (`--staged`, `prepush`) never write, so this workflow is the only
-place a record is minted. Pick one of two ways to invoke it:
+## 4. Add the anchored workflow
 
 **Option A — copy the reference workflow.** Copy
-[`examples/assay.yml`](../examples/assay.yml) into `.github/workflows/assay.yml`.
-It checks out with `fetch-depth: 0` (the check needs base history), sets up
-Node 22, mints the App installation token with `actions/create-github-app-token@v1`,
-and runs `lockfile-assay check --base "origin/${{ github.base_ref }}" --head HEAD
---memo-write --json`.
+[`examples/lockfile-assay.yml`](../examples/lockfile-assay.yml) into
+`.github/workflows/lockfile-assay.yml`.
 
 **Option B — use the packaged action.** Reference the composite action
-([`action.yml`](../action.yml)) instead of copying the YAML — it wraps the same
-`--memo-write` invocation. You still check out and mint the token first:
+([`action.yml`](../action.yml)) instead of copying the CLI invocation. You
+still check out, fetch the head, and mint the token first:
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-- uses: actions/create-github-app-token@v1
-  id: memo-token
-  with:
-    app-id: ${{ secrets.ASSAY_APP_ID }}
-    private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-- uses: jsalvata/lockfile-assay@v1
-  with:
-    base: origin/${{ github.base_ref }}
-    head: HEAD
-    memo-token: ${{ steps.memo-token.outputs.token }}
+# SECURITY-CRITICAL FILE — review every edit with care. Runs with secrets while
+# the PR controls the content under test; a careless edit reopens
+# code-execution-with-secrets. See the "Security discipline" note below and
+# https://github.com/jsalvata/lockfile-assay/blob/main/docs/setup-github-app.md
+name: lockfile-assay
+on:
+  pull_request_target:
+jobs:
+  assay:
+    runs-on: ubuntu-latest
+    environment: lockfile-assay
+    steps:
+      - uses: actions/checkout@v4        # base branch — never the PR head
+        with:
+          fetch-depth: 0
+      - run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.ASSAY_APP_ID }}
+          private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+      - uses: jsalvata/lockfile-assay@v1
+        with:
+          base: origin/${{ github.base_ref }}
+          head: ${{ github.event.pull_request.head.sha }}
+          app-token: ${{ steps.app-token.outputs.token }}
 ```
 
-Then, whichever option you chose:
+**Security discipline — read before editing this workflow.**
+`pull_request_target` runs with secrets while the PR controls the repository
+content under test. The assay treats that content as **inert data** (spec §3:
+`--ignore-scripts`, no `.pnpmfile.cjs`, nothing executes), and the workflow
+must preserve that property:
 
-1. **Add the workflow as a required status check** on your protected branch.
-2. **Protect the workflow file itself** (spec §6's anchor caveat — org rulesets /
-   required workflows) so a PR can't edit its own gate.
-3. **Gate the App secret behind a GitHub Environment.** A required status check
-   gates *merging*, not *running* — it does nothing to stop a same-repo PR from
-   minting the token in its own job by editing this workflow or adding a second
-   one. Since the memo's integrity rests on the App being the only writer, a
-   same-repo insider (or a compromised contributor or agent) who can mint the
-   token could `PUT` a poisoned record that a later clean PR then rides to a false
-   pass. To close this: put `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY` on a **GitHub
-   Environment gated by required reviewers** (Settings → Environments → New
-   environment → Required reviewers) instead of plain repo secrets, and add
-   `environment: <name>` to the token-minting job — the token is then minted only
-   after a human approves the run. (Forks are already safe: a `pull_request` from
-   a fork gets no secrets, so the memo is simply disabled and the check re-derives
-   live.) Spec §8 accepts this residual "raises the stakes by one notch" exposure
-   for v1; the roadmap's external verification App removes it.
+- check out the **base** (the `pull_request_target` default) — never the head;
+- fetch head commits as **git data** only (the CLI reads them as objects);
+- run the **published, pinned** assay — never a binary built from the PR;
+- no `pnpm install` of the repo under test, no `uses: ./`, no execution of
+  anything from the head tree.
 
-The repo the store writes to is discovered from the checkout's `origin` remote,
-and the memo branch is `lockfile-assay/memo` — matching steps 4–5. If either the
-token or `origin` is absent the memo is silently disabled and the check re-derives
-live; it never fails for lack of memo credentials.
+One careless edit here reopens arbitrary-code-execution-with-secrets. Treat
+this file as security-critical and keep it minimal.
 
-> A private-registry consumer must add the `~/.npmrc` file step (see
-> Prerequisites) to this workflow before the `lockfile-assay` step.
+## 5. Require the App's check on the protected branch
 
-## 7. Verify the chain
-
-After the branch and ruleset exist:
-
-1. **A non-App push must be REJECTED.** As a normal user (even a repo admin),
-   try to push to the memo branch directly:
-
-   ```sh
-   git switch lockfile-assay/memo
-   git commit --allow-empty -m "should be rejected"
-   git push origin lockfile-assay/memo   # expect: rejected by ruleset
-   git switch -
-   ```
-
-   The push should be refused server-side because the pusher is not on the
-   ruleset bypass list. If it succeeds, the ruleset is not restricting the
-   branch to the App — revisit step 5.
-
-2. **The App-token push must SUCCEED.** Open a PR that changes a resolution
-   input (a `package.json` dependency bump plus the matching lockfile update).
-   On a passing (byte-match) run, the workflow's `--memo-write` step commits a
-   record — you should see a new `memo/<epoch>/…json` commit on
-   `lockfile-assay/memo` authored by the App. A second run on the identical
-   inputs should report `memo: { hit: true, … }` in the `--json` output
-   (served from the record rather than re-resolved).
-
-3. **The write race is harmless.** Two concurrent passing runs on the same key
-   will both try to `PUT`; the loser gets a Contents-API conflict (HTTP 422) and
-   swallows it silently, because same-key records are equivalent.
+Branch protection / ruleset → required status checks → add the assay's check
+and select **this App** as its source. The pin is load-bearing: without it, any
+workflow can post a same-named green check via its own `GITHUB_TOKEN`.
 
 ## What can go wrong (and why it's safe)
 
-- **Token missing / `origin` not GitHub:** memo disabled, check re-derives live.
-  No failure.
-- **Memo read errors (GitHub outage, 5xx, bad JSON):** treated as a miss →
+- **App token missing / minting fails:** no verdict check is posted; the
+  required check stays pending and merges block. Fail-closed availability,
+  never a silent pass.
+- **Memo read errors (GitHub outage, 5xx, bad record):** treated as a miss →
   live re-derive. No failure.
-- **Memo write errors (other than the race):** logged to stderr and swallowed —
-  the verdict already happened; a failed write never fails the check.
-- **A stale record (inputs unchanged but head's lockfile honestly
-  re-authored):** falls through to a live resolve and refreshes itself. The
-  memo can never *create* a failure — only short-circuit to a pass.
+- **A stale record** (inputs unchanged but head's lockfile honestly
+  re-authored): falls through to a live resolve and a fresh record. The memo
+  can never *create* a failure — only short-circuit to a pass.
+- **Concurrent re-runs on the same key:** each posts its own record;
+  duplicates are equivalent.
+- **Fork PRs:** `pull_request_target` grants base secrets to fork PRs too —
+  safe under the same inertness discipline — so forks get the anchored check
+  and the memo (a plain `pull_request` check would run fork PRs without
+  secrets).
 
-See spec §8 ("The store — writes are the trust boundary") for the full rationale
-and the alternatives that were rejected (Actions cache, `GITHUB_TOKEN`-scoped
-statuses, signed records).
+See spec §8 ("The store — writes are the trust boundary") for the full
+rationale and the alternatives that were rejected.
+
+## Removing it
+
+Teardown is the reverse of setup, and the order matters for the same reason
+setup's did: a required check with no producer blocks every merge. **Un-require
+first, then remove what posts it.**
+
+1. **Un-require the check.** Branch protection / ruleset → required status
+   checks → remove the App-posted assay check. Do this first — once the workflow
+   or App is gone the check stops reporting, and a still-required check that
+   never arrives leaves every open PR merge-blocked.
+2. **Remove the workflow.** Delete `.github/workflows/lockfile-assay.yml` (and
+   `.lockfile-assay.json`, to stop configuring the assay at all). No further
+   verdicts are posted.
+3. **Delete the environment.** Settings → Environments → the `lockfile-assay`
+   environment → Delete — this removes `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY`
+   with it.
+4. **Delete the App.** Settings → Developer settings → GitHub Apps → the App →
+   Edit → Delete GitHub App. Deleting auto-uninstalls it from every repo; there
+   is no separate uninstall step.

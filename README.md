@@ -147,9 +147,11 @@ short-circuit instead of re-rolling.
   never memoised. Only the anchored CI form (`check --memo-write`) writes; the local
   hook forms read at most.
 
-The store is an orphan branch in your own repo, written solely by a dedicated GitHub
-App whose token a branch ruleset makes the only allowed writer — so a PR author cannot
-forge a verdict. Setup (App, secrets, memo branch, ruleset, reference workflow) is in
+The record rides in the verdict itself: the anchored check posts its result as a
+**check run** under a dedicated GitHub App, memo record included. GitHub sets
+check-run authorship server-side and only the creating App can update its runs — so
+a PR author cannot forge a verdict, and there is no store to provision or protect.
+Setup (App, secrets, anchored workflow, required-check pinning) is in
 [`docs/setup-github-app.md`](docs/setup-github-app.md). See spec §8 for the full design.
 
 See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics, the
