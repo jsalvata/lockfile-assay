@@ -12,7 +12,7 @@ export function embedRecord(record: StoredRecord): string {
  * JSON, a missing/mistyped field — yields null (a miss, never a false record). */
 export function parseRecord(summary: string | null | undefined): StoredRecord | null {
   if (!summary) return null;
-  const m = new RegExp(`<!--${MARKER} (\\{.*\\}) -->`).exec(summary);
+  const m = new RegExp(`<!--${MARKER} (\\{.*?\\}) -->`).exec(summary);
   if (!m) return null;
   let o: unknown;
   try {

@@ -29,4 +29,13 @@ describe('record marker embed/parse', () => {
     // marker present, JSON valid, but a required field missing/wrong type
     expect(parseRecord('<!--lockfile-assay-memo:v1 {"epoch":"1","inputsHash":"x"} -->')).toBeNull();
   });
+
+  it('non-greedy capture stops at the first close, even if trailing text (same line) contains "} -->"', () => {
+    // Trailing text on the *same line* as the marker, itself containing "} -->",
+    // would widen a greedy `.*` capture past the record's own closing brace and
+    // swallow the trailing text into the "JSON", breaking the parse. The
+    // non-greedy capture must stop at the record's own first close instead.
+    const summary = `${embedRecord(rec)} trailing note like {"forged":true} -->`;
+    expect(parseRecord(summary)).toEqual(rec);
+  });
 });
