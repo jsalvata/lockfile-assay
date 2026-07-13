@@ -1,8 +1,16 @@
+# SECURITY-CRITICAL: this action runs the derivation with your App token, but it
+# does NOT set the trigger or check out code — so it cannot enforce the anchor by
+# itself. Safe use requires the ANCHORED calling workflow: a pull_request_target
+# trigger, base checkout (never the PR head), and the token from a branch-
+# restricted environment. A naive pull_request wiring reopens
+# code-execution-with-secrets. See the guide before using or editing:
+# https://github.com/jsalvata/lockfile-assay/blob/main/docs/setup-github-app.md
 name: lockfile-assay
 description: >-
   Verify the committed lockfile derives honestly from reviewable inputs, post
   the verdict as the App's check run, and memoise passing derivations
-  (anchored form — spec §8).
+  (anchored form — spec §8). Safe only from an anchored pull_request_target
+  workflow — see docs/setup-github-app.md.
 inputs:
   base:
     description: Base ref (the PR merge-base), e.g. origin/${{ github.base_ref }}.
