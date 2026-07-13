@@ -19,10 +19,16 @@ inputs:
     description: Head ref to check, e.g. the PR head SHA (fetched as git data).
     required: false
     default: HEAD
-  app-token:
+  pr:
+    description: PR number, for memo consult (github.event.pull_request.number).
+    required: true
+  app-id:
+    description: The dedicated App's id, for the consult identity filter.
+    required: true
+  memo-token:
     description: >-
-      GitHub App installation token (Checks: read and write), from
-      actions/create-github-app-token. Passed to the CLI as
+      GitHub App installation token with Checks: write, from the dedicated App
+      (actions/create-github-app-token). Passed to the CLI as
       LOCKFILE_ASSAY_TOKEN. See docs/setup-github-app.md.
     required: true
 runs:
@@ -31,8 +37,10 @@ runs:
     - name: lockfile-assay
       shell: bash
       env:
-        LOCKFILE_ASSAY_TOKEN: ${{ inputs.app-token }}
+        LOCKFILE_ASSAY_TOKEN: ${{ inputs.memo-token }}
+        LOCKFILE_ASSAY_APP_ID: ${{ inputs.app-id }}
       run: |
         npx --yes lockfile-assay check \
           --base "${{ inputs.base }}" --head "${{ inputs.head }}" \
+          --pr "${{ inputs.pr }}" \
           --memo-write --json

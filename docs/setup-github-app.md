@@ -60,7 +60,10 @@ In the repo (Settings → Environments → New environment):
   tags** and add the protected branch (e.g. `main`). Do **not** add required
   reviewers — the branch policy is the gate, and it needs no per-run approval.
 - Add two **environment secrets**: `ASSAY_APP_ID` (the App ID) and
-  `ASSAY_APP_PRIVATE_KEY` (the full `.pem` contents).
+  `ASSAY_APP_PRIVATE_KEY` (the full `.pem` contents). `ASSAY_APP_ID` is also
+  passed to the CLI as `LOCKFILE_ASSAY_APP_ID` — it is the consult identity
+  filter, so a same-named check from another source is never read as a
+  record.
 
 Why this gates: environment access is evaluated against the ref a run executes
 on. A `pull_request_target` run executes in base context (`main`) and is
@@ -103,7 +106,9 @@ jobs:
         with:
           base: origin/${{ github.base_ref }}
           head: ${{ github.event.pull_request.head.sha }}
-          app-token: ${{ steps.app-token.outputs.token }}
+          pr: ${{ github.event.pull_request.number }}
+          app-id: ${{ secrets.ASSAY_APP_ID }}
+          memo-token: ${{ steps.app-token.outputs.token }}
 ```
 
 **Security discipline — read before editing this workflow.**

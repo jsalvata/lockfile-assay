@@ -50,8 +50,10 @@ jobs:
       - name: lockfile-assay
         env:
           LOCKFILE_ASSAY_TOKEN: ${{ steps.app-token.outputs.token }}
+          LOCKFILE_ASSAY_APP_ID: ${{ secrets.ASSAY_APP_ID }}
         run: |
           npx --yes lockfile-assay check \
             --base "origin/${{ github.base_ref }}" \
             --head "${{ github.event.pull_request.head.sha }}" \
+            --pr "${{ github.event.pull_request.number }}" \
             --memo-write --json
