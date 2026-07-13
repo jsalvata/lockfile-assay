@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildProgram, memoWarning, resolveMemo } from './cli.js';
+import type { MemoHook } from './check.js';
+import { buildProgram, lazyMemoClient, memoWarning, resolveMemo } from './cli.js';
 import { UsageError } from './errors.js';
+import type { StagedFile } from './staging.js';
 
 // Regression guard for the "silently ignored flag" wart: `check --staged` builds
 // a read-only memo (spec §8: local hook forms never write), so --memo-write can
@@ -86,5 +88,69 @@ describe('memoWarning — channel by environment', () => {
   it('escapes the runner-reserved percent in the Actions command message', () => {
     const w = memoWarning('weird%reason', { GITHUB_ACTIONS: 'true' });
     expect(w).toContain('weird%25reason');
+  });
+});
+
+// buildMemo wraps its credential discovery in lazyMemoClient so resolveMemo's
+// git/gh subprocesses run only if evaluate() actually reaches consult/record — a
+// vacuous run (the common source-only commit/push) resolves nothing.
+describe('lazyMemoClient — defers make() to first use', () => {
+  const FILES: StagedFile[] = [{ path: 'pnpm-lock.yaml', bytes: Buffer.from('x') }];
+  const COMMITTED = Buffer.from('committed');
+  const DERIVED = Buffer.from('derived');
+
+  function countingHook(): MemoHook & { calls: { consult: number; record: number } } {
+    const calls = { consult: 0, record: 0 };
+    return {
+      calls,
+      async consult() {
+        calls.consult++;
+        return null;
+      },
+      async record() {
+        calls.record++;
+      },
+    };
+  }
+
+  it('does not call make() at construction — a vacuous run never resolves', () => {
+    let made = 0;
+    lazyMemoClient(() => {
+      made++;
+      return countingHook();
+    });
+    expect(made).toBe(0);
+  });
+
+  it('calls make() exactly once across repeated consult/record (memoised)', async () => {
+    let made = 0;
+    const inner = countingHook();
+    const memo = lazyMemoClient(() => {
+      made++;
+      return inner;
+    });
+    await memo.consult(FILES, COMMITTED);
+    await memo.record(FILES, DERIVED);
+    await memo.consult(FILES, COMMITTED);
+    expect(made).toBe(1); // once, not per call (nor per prepush tip)
+    expect(inner.calls.consult).toBe(2);
+    expect(inner.calls.record).toBe(1);
+  });
+
+  it('delegates consult/record arguments to the made hook', async () => {
+    const seen: { consult?: unknown[]; record?: unknown[] } = {};
+    const memo = lazyMemoClient(() => ({
+      async consult(f, c) {
+        seen.consult = [f, c];
+        return null;
+      },
+      async record(f, d, p) {
+        seen.record = [f, d, p];
+      },
+    }));
+    await memo.consult(FILES, COMMITTED);
+    await memo.record(FILES, DERIVED, '9.12.0');
+    expect(seen.consult).toEqual([FILES, COMMITTED]);
+    expect(seen.record).toEqual([FILES, DERIVED, '9.12.0']);
   });
 });

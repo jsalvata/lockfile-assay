@@ -6,7 +6,7 @@ import type { MemoHook } from './check.js';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
 import { discoverToken, originRepo } from './memo/auth.js';
-import { lazyMemoClient, makeMemoClient } from './memo/client.js';
+import { makeMemoClient } from './memo/client.js';
 import { contentsApiStore } from './memo/store.js';
 import { exitForError } from './outcome.js';
 import { runPrepush } from './prepush.js';
@@ -54,16 +54,45 @@ export function memoWarning(reason: string, env: NodeJS.ProcessEnv = process.env
 }
 
 /**
- * Assemble the derivation-memo hook (spec §8). Discovery is LAZY (via
- * lazyMemoClient): a check touches the memo only inside evaluate()'s
- * consult/record, past the trigger + mode + preflight gates, so the common
- * source-only run (a vacuous pass) never spends the credential subprocesses.
- * If the credentials are absent the memo is disabled (null) — on the READ paths
- * that is a silent offline degrade (a check never fails or blocks for lack of
- * memo credentials). The WRITING form warns instead (see the `--memo-write`
- * guard below): there a disabled memo means passing runs are never recorded, so
- * later runs re-derive and an unchanged lockfile can spuriously mismatch on
- * registry drift.
+ * A disabled memo (no github.com origin, or no discoverable token): every
+ * consult misses and every record is a no-op, so the check simply re-derives
+ * live and never blocks for lack of credentials. A null-object keeps
+ * lazyMemoClient free of null checks.
+ */
+const DISABLED_MEMO: MemoHook = {
+  async consult() {
+    return null;
+  },
+  async record() {},
+};
+
+/**
+ * Wrap a MemoHook factory so `make` — and the credential discovery behind it —
+ * runs at most once, on the first consult/record, not when the hook is built. A
+ * check touches the memo only inside evaluate(), past the trigger + mode +
+ * preflight gates (spec §8), so the common source-only run (a vacuous pass)
+ * never spends resolveMemo's subprocesses (nor re-spends them per prepush tip).
+ * Lives here next to its only caller so the memo client stays a pure store→hook
+ * adapter. Exported for tests.
+ */
+export function lazyMemoClient(make: () => MemoHook): MemoHook {
+  let cached: MemoHook | undefined;
+  const client = (): MemoHook => {
+    if (cached === undefined) cached = make();
+    return cached;
+  };
+  return {
+    consult: (files, committed) => client().consult(files, committed),
+    record: (files, derived, pnpmVersion) => client().record(files, derived, pnpmVersion),
+  };
+}
+
+/**
+ * Assemble the derivation-memo hook (spec §8), resolved lazily on first use (see
+ * lazyMemoClient). When the credentials are absent the hook is the DISABLED_MEMO
+ * null-object — a silent offline degrade on the READ paths (a check never fails
+ * for lack of credentials); the WRITING form warns instead (see the
+ * `--memo-write` guard below).
  *
  * `write` is true only for the anchored CI form (`check --memo-write`); the
  * local forms (`check --staged`, `prepush`) hard-code false — they may READ
@@ -73,7 +102,7 @@ export function memoWarning(reason: string, env: NodeJS.ProcessEnv = process.env
 function buildMemo(write: boolean): MemoHook {
   return lazyMemoClient(() => {
     const m = resolveMemo();
-    return 'unavailable' in m ? null : makeMemoClient(contentsApiStore(m), { write });
+    return 'unavailable' in m ? DISABLED_MEMO : makeMemoClient(contentsApiStore(m), { write });
   });
 }
 
