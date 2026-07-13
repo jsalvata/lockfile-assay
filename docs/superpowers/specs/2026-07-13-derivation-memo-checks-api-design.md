@@ -110,18 +110,26 @@ interface Backend {
   // heads from the timeline — filtered to the App's identity + check name. Any
   // transport error throws; the adapter maps a throw to a miss.
   listRecords(): Promise<StoredRecord[]>;
-  // verdict post: one check run reflecting this run's outcome, embedding
-  // `record` on a pass. Throws on failure; the caller treats a throw as a
-  // best-effort miss and warns.
+  // verdict post: one check run reflecting this run's outcome. Throws on
+  // failure; the caller treats a throw as a best-effort miss and warns.
   postVerdict(v: {
     headSha: string;
     conclusion: 'success' | 'failure' | 'neutral';
     title: string;
     summary: string;
-    record?: StoredRecord;
   }): Promise<void>;
 }
 ```
+
+As built, `Backend` is dumber than the interface above suggests: it carries no
+`StoredRecord` at all. The adapter (`store.ts`) embeds the record into
+`summary` itself — `embedRecord(record)` behind the HTML-comment marker (§3) —
+before calling `postVerdict`, and `checks-api.ts`'s transport never sees a
+`StoredRecord` shape on the write path (only `parseRecord` on the read path,
+inside `listRecords`). This keeps the transport record-agnostic: it moves
+opaque `summary` strings, and only the adapter knows what a record looks like
+or that one is embedded — a cleaner split than threading a typed `record?`
+field through the transport layer.
 
 ## 3. The record and where it lives
 
