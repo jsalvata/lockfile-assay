@@ -32,4 +32,15 @@ describe('check CLI: --pr is accepted', () => {
       }),
     ).resolves.toBeDefined();
   });
+
+  it('rejects a non-integer --pr with a UsageError instead of coercing to NaN', async () => {
+    // commander's option parser turns 'abc' into NaN; left unchecked that would
+    // silently become "no PR context" (a safe-looking miss) rather than a loud
+    // rejection of the malformed invocation.
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--head', 'HEAD', '--pr', 'abc'], {
+        from: 'user',
+      }),
+    ).rejects.toThrow(UsageError);
+  });
 });

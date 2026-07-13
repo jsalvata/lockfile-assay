@@ -51,6 +51,13 @@ export function buildProgram(): Command {
             '--memo-write cannot be combined with --staged (local hook forms never write the memo)',
           );
         }
+        // commander's `(v) => Number(v)` parser coerces a non-integer/malformed
+        // --pr to NaN rather than rejecting it, which would otherwise silently
+        // degrade to a safe miss (no PR context → no consult). Reject it loudly
+        // instead, mirroring appId()'s validation of LOCKFILE_ASSAY_APP_ID.
+        if (o.pr !== undefined && (!Number.isInteger(o.pr) || o.pr <= 0)) {
+          throw new UsageError('--pr must be a positive integer');
+        }
         if (o.staged) {
           // local hook form: read-only memo (consult only when --pr given), never posts
           const memo = buildMemoDriver({ write: false, pr: o.pr });
