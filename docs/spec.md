@@ -283,12 +283,30 @@ running `lockfile-assay check --base <merge-base> --head <head>` with `enforce`
 read from base config.
 
 **The anchor caveat.** Any check is only as strong as what prevents the PR from
-editing its wiring. The mode knob is safe (read from base), but the workflow file that
-invokes the check is repo content like any other — protect it with the host's
-mechanisms (org rulesets, required workflows, or an external app that runs the check
-outside the repo's own CI definition). This is a property of CI-based enforcement in
-general, not of this tool; it is named here so nobody mistakes a required check for
-more than it is.
+editing its wiring. The mode knob is safe (read from base), but a workflow file is
+repo content like any other — and a same-repo `pull_request` workflow runs the
+definition **from the PR head, with secrets, at open time**, before any review. A
+required status check gates *merging*, not *running*; by itself it cannot stop a PR
+from rewriting its own gate. This is a property of CI-based enforcement in general,
+not of this tool; it is named here so nobody mistakes an unanchored required check
+for more than it is.
+
+**The anchored form** dissolves the caveat with server-enforced facts — no external
+service required. The check runs from a workflow triggered on
+**`pull_request_target`**, which executes the **base branch's** workflow
+definition: a PR can neither edit the definition that runs (its edits are not on
+base) nor smuggle in a replacement (a `pull_request_target` workflow added by a PR
+is not on base and does not trigger). The verdict is posted as a **check run under
+a dedicated GitHub App** (§8), and branch protection requires that check **from
+that App's identity** — a same-named check posted via a PR job's self-granted
+`GITHUB_TOKEN` reports from the built-in Actions identity and cannot satisfy the
+requirement. The App's credentials live on a GitHub Environment whose
+deployment-branch policy admits only base-context runs, so no PR-reachable job can
+mint its token. Running the check privileged is safe because §3 keeps PR content
+inert — no scripts, no tarballs, nothing executes; the anchored workflow must
+preserve that property: check out the base, read head content as git data only,
+invoke a pinned published assay, and execute nothing from the head tree.
+`docs/setup-github-app.md` walks the setup.
 
 **Prerequisites.** The job needs registry reachability and credentials for every scope
 the lockfile resolves (private registries included), and the pnpm version pinned by
@@ -489,42 +507,50 @@ PR (§1); a memo store the PR's own CI run can write is bring-your-own-verdict:
 | Candidate | Why not |
 |---|---|
 | GitHub Actions cache | evicted (~7 days idle, LRU size cap) — gone exactly when a long-lived PR needs it; and PR-branch runs (author-controlled code) can write their own cache scope — a known poisoning class |
-| Check runs / statuses via `GITHUB_TOKEN` | a same-repo author can self-grant `checks: write` from a workflow file, and every `GITHUB_TOKEN` writer is the same indistinguishable `github-actions` identity |
+| Check runs / statuses via `GITHUB_TOKEN` | a same-repo author can self-grant `checks: write` from a workflow file, and every `GITHUB_TOKEN` writer is the same indistinguishable `github-actions` identity — the writer fails, not the medium: check runs under a *dedicated App* identity are exactly the chosen store |
+| An orphan memo branch, ruleset-restricted to a dedicated App | sound, and previously chosen — but heavier and more fragile than needed: a second permission (Contents: write), a branch and a ruleset to provision, and an ACL whose misconfiguration **fails silent-insecure** (a missing or mistargeted ruleset leaves the branch writable by anyone, with nothing visibly wrong), all to guard records the verdict channel can carry under a server-inherent ACL |
 | Signed records (Sigstore, OIDC-bound to the workflow identity) | sound and storage-agnostic — but verification (sigstore-js, TUF roots) enters the reader's trust path, identity policy must pin a workflow ref outside PR reach, and private repos — exactly where the threat lives (§10) — either leak metadata to the public Rekor log or need GitHub Enterprise Cloud's private store. The growth path: GitHub artifact attestations as a second backend behind the store interface, likely the public-repo default later |
 
-Chosen: an orphan branch in the **consumer repo** (e.g. `lockfile-assay/memo`),
-one small JSON per key under a two-hex fanout
-(`memo/<epoch>/<hash[0:2]>/<hash>.json`), protected by a repository ruleset that
-restricts pushes to the identity of the anchored check (§6) — a **dedicated GitHub
-App** (§12 Q6: a named, auditable actor with a revocable installation, chosen over a
-deploy key). GitHub enforces the ACL server-side; the append-only history is the
-audit ledger; revocation is `git rm`, itself history. Reads and writes go through
-the Contents API (`GET` per key, 404 = miss; `PUT` commits server-side under the
-App's identity, and races reduce to retry-on-409) — the branch is never cloned or
-checked out. The CLI never mints App credentials: the anchored workflow mints a
-short-lived installation token (e.g. `actions/create-github-app-token`) and passes it
-in env; the CLI's token discovery is env → `GITHUB_TOKEN` → ambient `gh` → none. The
-store sits behind a narrow backend interface (§13), so a future backend — artifact
-attestations, plain git — slots in without touching consult semantics. Records are
-~1 KB; even a bump-heavy repo writes single-digit megabytes a year, decades from any
-hosting limit. Entries whose PRs merged or closed go inert
-(their input sets never re-stage); pruning them is optional tidiness, not v1.
+Chosen: **the verdict channel itself.** The anchored check posts its verdict as a
+**check run** under a dedicated GitHub App (§12 Q6: a named, auditable actor with a
+revocable installation), and the memo record — epoch, inputs hash, derived lockfile
+hash, tool versions, timestamp — rides in that check run's output. Authorship is
+server-inherent: GitHub sets a check run's creating App from the token that made
+it, and **only that App can update it** — nothing to provision, no ACL to
+misconfigure, no edit surface for collaborators. Consult lists the PR's prior check
+runs filtered to the App's identity and matches the recorded inputs hash against
+the currently staged inputs; anything else — no match, a lost or unreachable
+record — is a miss that falls through to a live re-derive. Concurrent runs on the
+same key each post a record; duplicates are equivalent, so there is no write race
+to handle. Consult is PR-scoped, foregoing cross-PR hits (two PRs staging identical
+inputs each derive live once) — every re-roll the memo exists to kill is same-PR:
+source-only pushes, flaky re-runs, merge-queue re-validation. There is no retention
+or pruning story: check runs persist with the repo, and a record goes inert the
+moment its key moves anyway (base's lockfile advancing, §7). The CLI never mints
+App credentials: the anchored workflow mints a short-lived installation token (e.g.
+`actions/create-github-app-token`) and passes it in env. The store sits behind a
+narrow backend interface (§13), so a future backend — artifact attestations, plain
+git for non-GitHub hosting — slots in without touching consult semantics.
 
-This raises the stakes of §6's anchor caveat by one notch: the store credential must
-be reachable **only** from the anchored check — an external app, or a workflow gated
-so PR-editable definitions can never see it. Running the check privileged is safe
-because §3 keeps PR content inert (no scripts, no tarballs, nothing executes). The
-local forms (`prepush`, `--staged`) hold no writer credential: they consult the memo
-read-only via whatever is ambient (`GITHUB_TOKEN`, `gh auth token`) and skip silently
-without one — record integrity comes from the writer ACL, not the reader. They never
-write; even a privileged developer token could not, since the ruleset refuses non-App
-pushes server-side — the design working as intended. Mode gating is unchanged: `off`
-evaluates nothing, so it neither reads nor writes memos.
+The writer credential is unreachable from PR-editable definitions **by
+construction** (§6): the anchored workflow's definition comes from base, its
+secrets from a branch-restricted Environment, and the required check is pinned to
+the App identity. The local forms (`prepush`, `--staged`) hold no writer
+credential: they consult read-only via whatever is ambient — env token →
+`GITHUB_TOKEN` → ambient `gh` → none — where an associated PR exists, and skip
+silently otherwise; record integrity comes from check-run authorship, not from the
+reader. They never write; nothing they could hold would let them, since only the
+creating App can update its check runs — the design working as intended. Mode
+gating is unchanged: `off` evaluates nothing, so it neither reads nor writes
+memos.
 
 **Validation spike (pre-implementation, §12 Q6).** Prove the chain on a scratch repo
-before the memo lands: the ruleset naming the App as the memo branch's sole allowed
-pusher, in-workflow installation-token minting, and Contents API `GET`/`PUT`
-semantics including the 409 race.
+before the memo lands: a deployment-branch-restricted Environment admitting
+`pull_request_target` runs and refusing `pull_request` ones (including from
+PR-added workflows); an App-pinned required check refusing a same-named
+`GITHUB_TOKEN` check; check-run immutability (only the creating App can update its
+runs); in-workflow installation-token minting; and consult/write mechanics,
+including equivalent duplicate records from concurrent runs.
 
 **What the memo does not fix.** The *first* evaluation of fresh inputs still races
 the registry — that window belongs to `prepush` and `--staged` above. An epoch bump
@@ -629,10 +655,12 @@ including the local forms (§8), and the derivation memo (§8). Implementation d
   claim intact (the file is reviewable diff) but needs a credential-isolation story
   for §8's memo-writing run, where "nothing executes" currently carries the safety
   argument.
-- **The external App service** — the check as a webhook-backed GitHub App running
-  outside the repo's CI definition dissolves §6's anchor caveat entirely; the v1 App
-  identity is the seed.
-- Memo store backends beyond the GitHub Contents API (§8) — **GitHub artifact
+- **A hosted verification service** — the check as a webhook-backed GitHub App
+  service running the derivation outside the consumer's CI. Not a security need
+  (§6's anchored form already dissolves the caveat) but a productization one:
+  multi-tenant hosting for repos that would rather install an App than own a
+  workflow; the v1 App identity is the seed.
+- Memo store backends beyond App check runs (§8) — **GitHub artifact
   attestations** (public repos first; Enterprise-gated for private ones), and a
   plain-git fallback (shallow single-branch fetch + `cat-file`) for non-GitHub
   hosting.
@@ -683,7 +711,7 @@ whose staged root manifest itself carries the pin corepack honors.
 third-party code and never import the report layer; the verdict is raw byte
 equality. Lockfile YAML parsing exists only in `report/` (the delta summary). An
 import-graph guard test enforces both properties so they cannot silently regress.
-Runtime dependencies: `commander` and `yaml`, exact-pinned — Contents API via
+Runtime dependencies: `commander` and `yaml`, exact-pinned — the Checks API via
 built-in `fetch`, hashing via `node:crypto`.
 
 **Modules.**
@@ -699,7 +727,7 @@ src/
   derive.ts       # runs the pinned pnpm in the staged tree → derived bytes
   verdict.ts      # byte compare → outcome
   memo/           # key.ts (EPOCH + inputsHash) · auth.ts (token chain) ·
-                  # store.ts (Contents API behind a backend interface)
+                  # store.ts (Checks API behind a backend interface)
   report/         # delta.ts (YAML parse, report-side only) · render.ts (human + --json)
 ```
 
@@ -727,9 +755,10 @@ lines, skipping deletions, fast-path diff first.
   - **drift and remedy**: a floor-moved spec racing a fresh publish; a base advance;
     then the refresh recipe converging to a pass — the self-healing property, tested;
   - **local forms**: index-tree head, stdin ref lines, every cannot-evaluate degrade;
-  - **memo**, against a faked Contents API: hit short-circuit with the registry
+  - **memo**, against a faked Checks API: hit short-circuit with the registry
     killed (proving no registry roll), stale-memo fallthrough, mismatch never
-    memoised, epoch isolation, 409 retry.
+    memoised, epoch isolation, duplicate records from concurrent runs read as
+    equivalent.
 - *Dogfood + smoke*: CI runs `node dist/cli.js check` on the repo itself; CLI smoke
   tests per waiver-stamp; the release checklist carries §8's epoch-bump rule ("when
   in doubt, bump").

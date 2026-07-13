@@ -1,12 +1,19 @@
-# Reference required-check workflow for lockfile-assay with the derivation memo.
+# Reference anchored workflow for lockfile-assay (spec §6 / §8).
 #
-# This is the *anchored CI form* — the only form that writes memo records
-# (spec §8). It mints a short-lived GitHub App installation token and passes it
-# to the CLI in env; the App's identity is the sole writer the memo branch's
-# ruleset allows, so the verdict this workflow records is trustworthy even
-# though the PR author controls everything else in the run.
+# ANCHOR: this triggers on `pull_request_target`, so the workflow definition
+# that runs is the BASE branch's — server-enforced; a PR cannot edit its own
+# gate, and a pull_request_target workflow added by a PR does not trigger. The
+# App secrets live on a branch-restricted environment only base-context runs
+# can read, and branch protection pins the required check to the App's
+# identity. Setup: docs/setup-github-app.md.
 #
-# Setup (App, secrets, memo branch, ruleset) is in docs/setup-github-app.md.
+# SECURITY DISCIPLINE: a pull_request_target job runs with secrets while the
+# PR controls the repository content under test. The assay treats that content
+# as inert data (spec §3: --ignore-scripts, no pnpmfile, nothing executes),
+# and this job must preserve that property — check out the BASE (the default
+# here), fetch head commits as git data only, run the published pinned assay,
+# and never execute anything from the head tree (no pnpm install of the repo
+# under test, no `uses: ./`, no head checkout).
 #
 # Private-registry note: the derivation strips `npm_config_*` env vars so
 # ambient env can't override the staged `.npmrc` (spec §6). Supply private
@@ -14,32 +21,30 @@
 # add a step that writes ~/.npmrc before the check runs.
 name: lockfile-assay
 on:
-  pull_request:
+  pull_request_target:
 jobs:
   assay:
     runs-on: ubuntu-latest
-    # SECURITY: this job mints a memo-writer token from the App secret, and a
-    # required status check does NOT stop a PR from minting it (see
-    # docs/setup-github-app.md section 6). For same-repo PR safety, put
-    # ASSAY_APP_ID / ASSAY_APP_PRIVATE_KEY on a GitHub Environment gated by
-    # required reviewers and enable it here:
-    #   environment: memo-write
+    environment: lockfile-assay
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4        # base branch — never the PR head
         with:
           fetch-depth: 0
+      - name: fetch head as git data
+        run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: actions/create-github-app-token@v1
-        id: memo-token
+        id: app-token
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
       - name: lockfile-assay
         env:
-          LOCKFILE_ASSAY_TOKEN: ${{ steps.memo-token.outputs.token }}
+          LOCKFILE_ASSAY_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           npx --yes lockfile-assay check \
-            --base "origin/${{ github.base_ref }}" --head HEAD \
+            --base "origin/${{ github.base_ref }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
             --memo-write --json

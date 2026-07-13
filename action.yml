@@ -1,19 +1,20 @@
 name: lockfile-assay
 description: >-
-  Verify the committed lockfile derives honestly from reviewable inputs, and
-  record passing derivations to the memo (anchored CI form — spec §8).
+  Verify the committed lockfile derives honestly from reviewable inputs, post
+  the verdict as the App's check run, and memoise passing derivations
+  (anchored form — spec §8).
 inputs:
   base:
     description: Base ref (the PR merge-base), e.g. origin/${{ github.base_ref }}.
     required: true
   head:
-    description: Head ref to check.
+    description: Head ref to check, e.g. the PR head SHA (fetched as git data).
     required: false
     default: HEAD
-  memo-token:
+  app-token:
     description: >-
-      GitHub App installation token with Contents: write on the memo branch,
-      from actions/create-github-app-token. Passed to the CLI as
+      GitHub App installation token (Checks: read and write), from
+      actions/create-github-app-token. Passed to the CLI as
       LOCKFILE_ASSAY_TOKEN. See docs/setup-github-app.md.
     required: true
 runs:
@@ -22,7 +23,7 @@ runs:
     - name: lockfile-assay
       shell: bash
       env:
-        LOCKFILE_ASSAY_TOKEN: ${{ inputs.memo-token }}
+        LOCKFILE_ASSAY_TOKEN: ${{ inputs.app-token }}
       run: |
         npx --yes lockfile-assay check \
           --base "${{ inputs.base }}" --head "${{ inputs.head }}" \

@@ -1,27 +1,26 @@
-# lockfile-assay — anchored CI form with the derivation memo (spec §8).
+# lockfile-assay — INTERIM dogfood form of the anchored check.
 #
-# This is the ONLY form that writes memo records. It mints a short-lived GitHub
-# App installation token and passes it to the CLI in env; the App's identity is
-# the sole writer the memo branch's ruleset allows, so the verdict this workflow
-# records is trustworthy even though the PR author controls the rest of the run.
+# The adopted design (spec §6/§8) anchors on pull_request_target and carries
+# the memo in the App's own check runs — see examples/assay.yml and
+# docs/setup-github-app.md. That backend is not implemented yet, so this
+# workflow still runs the superseded interim form: pull_request trigger,
+# reviewer-gated environment, branch-store memo. Migration plan:
+# docs/external-app-direction.md.
 #
-# Setup (App, secrets, memo branch, ruleset) is in docs/setup-github-app.md.
-#
-# NOTE (dogfooding): the reference workflow in examples/assay.yml runs
-# `npx --yes lockfile-assay`, which would fetch the PUBLISHED package. This repo
-# is lockfile-assay itself, so — like the Dogfood step in ci.yml — we build and
-# run the CLI under review (`node dist/cli.js`) instead.
+# NOTE (dogfooding): the reference workflow runs the PUBLISHED package. This
+# repo is lockfile-assay itself, so — like the Dogfood step in ci.yml — we
+# build and run the CLI under review (`node dist/cli.js`) instead.
 name: lockfile-assay
 on:
   pull_request:
 jobs:
   assay:
     runs-on: ubuntu-latest
-    # SECURITY: this job mints a memo-writer token from the App secret, and a
-    # required status check does NOT stop a PR from minting it (see
-    # docs/setup-github-app.md section 6). ASSAY_APP_ID / ASSAY_APP_PRIVATE_KEY
-    # live on the `memo-write` GitHub Environment, gated by required reviewers,
-    # so the token is minted only after a human approves the run.
+    # SECURITY (interim form): this job mints a memo-writer token from the App
+    # secret, and a required status check does NOT stop a PR from minting it.
+    # ASSAY_APP_ID / ASSAY_APP_PRIVATE_KEY live on the `memo-write` GitHub
+    # Environment, gated by required reviewers, so the token is minted only
+    # after a human approves the run.
     environment: memo-write
     steps:
       - uses: actions/checkout@v4
