@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { discoverToken, originRepo } from './auth.js';
+import { appId, discoverToken, originRepo } from './auth.js';
 
 // The token chain and origin parsing (spec §13) are consumed by the memo backend;
 // they are exercised directly here so they stay covered independently of any one
@@ -70,5 +70,19 @@ describe('discoverToken — first hit in the credential chain', () => {
     } finally {
       rmSync(noPath, { recursive: true, force: true });
     }
+  });
+});
+
+describe('appId — the App identity for the consult filter', () => {
+  it('reads a positive integer from LOCKFILE_ASSAY_APP_ID', () => {
+    expect(appId({ LOCKFILE_ASSAY_APP_ID: '12345' })).toBe(12345);
+  });
+  it('is null when unset', () => {
+    expect(appId({})).toBeNull();
+  });
+  it('is null for a non-integer or non-positive value', () => {
+    expect(appId({ LOCKFILE_ASSAY_APP_ID: 'abc' })).toBeNull();
+    expect(appId({ LOCKFILE_ASSAY_APP_ID: '0' })).toBeNull();
+    expect(appId({ LOCKFILE_ASSAY_APP_ID: '1.5' })).toBeNull();
   });
 });

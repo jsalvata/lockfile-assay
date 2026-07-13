@@ -32,3 +32,16 @@ export function originRepo(cwd?: string): string | null {
   const m = /(?:@|:\/\/(?:[^/@]*@)?)github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(url);
   return m?.[1] ?? null;
 }
+
+/**
+ * The dedicated App's numeric id, from `LOCKFILE_ASSAY_APP_ID` (spec §8). Consult
+ * filters check runs to this id — the security anchor that stops a same-named
+ * `GITHUB_TOKEN`-authored check from being read as a record. Null (no id) simply
+ * disables consult; a check never fails for lack of one.
+ */
+export function appId(env: NodeJS.ProcessEnv = process.env): number | null {
+  const raw = env.LOCKFILE_ASSAY_APP_ID;
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
