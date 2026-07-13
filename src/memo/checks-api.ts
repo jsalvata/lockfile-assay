@@ -85,6 +85,13 @@ export class ChecksApiBackend implements Backend {
       const body = (await res.json()) as { check_runs?: CheckRun[] };
       for (const run of body.check_runs ?? []) {
         if (run.conclusion !== 'success') continue; // records live only in success runs
+        // Belt-and-suspenders: re-verify the App identity client-side even though
+        // the request already filtered by `app_id`. This is the single trust
+        // anchor of the whole security model (design §4, "why the app_id filter
+        // is load-bearing") — a GITHUB_TOKEN/github-actions check named
+        // `lockfile-assay` must never be read as a record, so never trust a run
+        // whose own body disagrees with the query filter.
+        if (run.app?.id !== this.o.appId) continue;
         const rec = parseRecord(run.output?.summary);
         if (rec) records.push(rec);
       }
@@ -154,6 +161,7 @@ export class ChecksApiBackend implements Backend {
 type CheckRun = {
   conclusion: string | null;
   output?: { summary?: string | null };
+  app?: { id?: number };
 };
 type ForcePushResponse = {
   data?: {

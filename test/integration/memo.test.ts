@@ -14,7 +14,20 @@ import type { StagedFile } from '../../src/staging.js';
 // A faked GitHub Checks API. Tests seed check runs keyed by commit SHA and
 // register which commits belong to the PR's current chain vs its force-pushed
 // history, then assert what the driver reads / writes.
-type Run = { conclusion: string; summary: string; app_id: number; name: string };
+//
+// `app_id` drives the server-side `?app_id=` query filter (a run is returned
+// at all only when it matches); `reportedAppId` (defaulting to `app_id`) is
+// what the response body's `app.id` carries. Keeping them separate lets a test
+// seed a run that *passes* the server-side filter yet reports a *different*
+// app.id in its body — the only way to exercise the client-side
+// re-verification belt-and-suspenders independently of the server-side one.
+type Run = {
+  conclusion: string;
+  summary: string;
+  app_id: number;
+  name: string;
+  reportedAppId?: number;
+};
 class FakeGitHub {
   server!: Server;
   base = '';
@@ -51,7 +64,11 @@ class FakeGitHub {
         const all = this.runs.get(m[1] as string) ?? [];
         const check_runs = all
           .filter((r) => r.app_id === appId && r.name === name)
-          .map((r) => ({ conclusion: r.conclusion, output: { summary: r.summary } }));
+          .map((r) => ({
+            conclusion: r.conclusion,
+            output: { summary: r.summary },
+            app: { id: r.reportedAppId ?? r.app_id },
+          }));
         return send(200, { check_runs });
       }
       // graphql force-push timeline
@@ -208,5 +225,15 @@ describe('memo, against a faked Checks API', () => {
     gh.seedRun('sha_head', successRun(record()));
     gh.seedRun('sha_head', successRun(record())); // a second concurrent run posted the same
     expect(await driver(7, false).consult(files, committed)).toMatchObject({ hit: true });
+  });
+
+  it('belt-and-suspenders: a run that passes the server-side app_id filter but reports a mismatched app.id in its body is not read as a record (miss)', async () => {
+    gh.chain = ['sha_head'];
+    // app_id: APP_ID passes the server's `?app_id=` query filter and the run is
+    // otherwise a valid success record; only its body's app.id (111) disagrees
+    // with the driver's configured appId (999). The client-side re-check (belt
+    // and suspenders — checks-api.ts listRecords) must still reject it.
+    gh.seedRun('sha_head', { ...successRun(record()), reportedAppId: 111 });
+    expect(await driver(7, false).consult(files, committed)).toBeNull();
   });
 });
