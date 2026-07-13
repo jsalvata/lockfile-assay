@@ -529,8 +529,8 @@ or pruning story: check runs persist with the repo, and a record goes inert the
 moment its key moves anyway (base's lockfile advancing, §7). The CLI never mints
 App credentials: the anchored workflow mints a short-lived installation token (e.g.
 `actions/create-github-app-token`) and passes it in env. The store sits behind a
-narrow backend interface (§13), so a future backend — artifact attestations, plain
-git for non-GitHub hosting — slots in without touching consult semantics.
+narrow backend interface (§13), so the backend can change without touching consult
+semantics.
 
 The writer credential is unreachable from PR-editable definitions **by
 construction** (§6): the anchored workflow's definition comes from base, its
@@ -655,15 +655,6 @@ including the local forms (§8), and the derivation memo (§8). Implementation d
   claim intact (the file is reviewable diff) but needs a credential-isolation story
   for §8's memo-writing run, where "nothing executes" currently carries the safety
   argument.
-- **A hosted verification service** — the check as a webhook-backed GitHub App
-  service running the derivation outside the consumer's CI. Not a security need
-  (§6's anchored form already dissolves the caveat) but a productization one:
-  multi-tenant hosting for repos that would rather install an App than own a
-  workflow; the v1 App identity is the seed.
-- Memo store backends beyond App check runs (§8) — **GitHub artifact
-  attestations** (public repos first; Enterprise-gated for private ones), and a
-  plain-git fallback (shallow single-branch fetch + `cat-file`) for non-GitHub
-  hosting.
 - The remaining §8 direction — quarantine-window guidance — lands when specified.
 
 ## 12. Open questions — all resolved 2026-07-04

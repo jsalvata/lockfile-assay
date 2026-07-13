@@ -70,14 +70,18 @@ adds — executes on the PR's merge ref and is refused the secrets server-side.
 ## 4. Add the anchored workflow
 
 **Option A — copy the reference workflow.** Copy
-[`examples/assay.yml`](../examples/assay.yml) into
-`.github/workflows/assay.yml`.
+[`examples/lockfile-assay.yml`](../examples/lockfile-assay.yml) into
+`.github/workflows/lockfile-assay.yml`.
 
 **Option B — use the packaged action.** Reference the composite action
 ([`action.yml`](../action.yml)) instead of copying the CLI invocation. You
 still check out, fetch the head, and mint the token first:
 
 ```yaml
+# SECURITY-CRITICAL FILE — review every edit with care. Runs with secrets while
+# the PR controls the content under test; a careless edit reopens
+# code-execution-with-secrets. See the "Security discipline" note below and
+# https://github.com/jsalvata/lockfile-assay/blob/main/docs/setup-github-app.md
 name: lockfile-assay
 on:
   pull_request_target:
@@ -123,20 +127,6 @@ Branch protection / ruleset → required status checks → add the assay's check
 and select **this App** as its source. The pin is load-bearing: without it, any
 workflow can post a same-named green check via its own `GITHUB_TOKEN`.
 
-## 6. Verify the chain
-
-1. **A PR-added workflow must be refused the secrets.** Open a scratch PR that
-   adds a workflow referencing the environment — the job should fail at the
-   environment gate, before any secret is readable.
-2. **A `GITHUB_TOKEN` check must not satisfy the requirement.** Post a
-   same-named check from an ordinary workflow — branch protection should still
-   report the required check as missing.
-3. **The memo round-trips.** Open a PR that changes a resolution input (a
-   `package.json` bump plus the matching lockfile update). On a passing run,
-   the App's check run carries the memo record; a re-run on identical inputs
-   reports `memo: { hit: true, … }` in the `--json` output, with no registry
-   round-trip.
-
 ## What can go wrong (and why it's safe)
 
 - **App token missing / minting fails:** no verdict check is posted; the
@@ -167,7 +157,7 @@ first, then remove what posts it.**
    checks → remove the App-posted assay check. Do this first — once the workflow
    or App is gone the check stops reporting, and a still-required check that
    never arrives leaves every open PR merge-blocked.
-2. **Remove the workflow.** Delete `.github/workflows/assay.yml` (and
+2. **Remove the workflow.** Delete `.github/workflows/lockfile-assay.yml` (and
    `.lockfile-assay.json`, to stop configuring the assay at all). No further
    verdicts are posted.
 3. **Delete the environment.** Settings → Environments → the `lockfile-assay`
@@ -176,9 +166,3 @@ first, then remove what posts it.**
 4. **Delete the App.** Settings → Developer settings → GitHub Apps → the App →
    Edit → Delete GitHub App. Deleting auto-uninstalls it from every repo; there
    is no separate uninstall step.
-
-**There is no memo store to purge.** Records live inside the App's past check
-runs — inert verdict artifacts, not a branch or a store. Once the App is gone
-they are simply never consulted again (and a re-adoption under a new App identity
-ignores them regardless). Setup and teardown are just "an App, an environment, a
-workflow, a required-check pin" — nothing persistent to provision or clean up.

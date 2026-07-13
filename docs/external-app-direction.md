@@ -73,7 +73,7 @@ itself with no anchored backend is worse than not running it. Removed: the local
 hooks' assay invocation, `.github/workflows/assay.yml`, the `ci.yml` dogfood
 step, and `.lockfile-assay.json`; the GitHub-side App / environment / secrets /
 memo branch / ruleset are torn down too. The reference artifacts consumers use
-(`examples/assay.yml`, `action.yml`, the setup doc) stay — they describe the
+(`examples/lockfile-assay.yml`, `action.yml`, the setup doc) stay — they describe the
 anchored form, not this repo's deployment.
 
 Re-adoption, once the backend lands, runs the **published**
@@ -138,10 +138,10 @@ per-request sandbox running untrusted, network-touching derivations (egress
 filtering, per-tenant isolation), plus operator trust (one private key for all
 tenants) and custody of private-registry credentials the consumer's CI already
 holds natively. The serverless anchor delivers the same integrity with none of
-that. A hosted service remains on the roadmap (spec §11) purely as
-productization — multi-tenant hosting for repos that would rather install an
-App than own a workflow — where signed / independently reproducible verdicts
-(artifact attestations, §8) would soften the operator-trust requirement.
+that, so a hosted service is not a security goal. If one were ever built it
+would be pure productization — multi-tenant hosting for repos that would rather
+install an App than own a workflow — and even then worth it only with signed /
+independently reproducible verdicts to soften the operator-trust requirement.
 
 ## References
 

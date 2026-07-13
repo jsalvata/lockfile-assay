@@ -1,5 +1,13 @@
 # Reference anchored workflow for lockfile-assay (spec §6 / §8).
 #
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ SECURITY-CRITICAL FILE — review every edit with care.                     │
+# │ This workflow runs with secrets while the PR controls the content under   │
+# │ test; a careless edit reopens code-execution-with-secrets. Read the guide  │
+# │ before changing it:                                                        │
+# │ https://github.com/jsalvata/lockfile-assay/blob/main/docs/setup-github-app.md │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
 # ANCHOR: this triggers on `pull_request_target`, so the workflow definition
 # that runs is the BASE branch's — server-enforced; a PR cannot edit its own
 # gate, and a pull_request_target workflow added by a PR does not trigger. The
