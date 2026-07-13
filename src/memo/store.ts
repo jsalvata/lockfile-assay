@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
+import type { MemoHook } from '../check.js';
 import { INVOCATION } from '../derive.js';
 import type { MemoProvenance, Outcome } from '../outcome.js';
 import type { StagedFile } from '../staging.js';
+import { toolVersion } from '../version.js';
+import { embedRecord } from './checks-api.js';
 import { EPOCH, inputsHash } from './key.js';
 
 export type StoredRecord = {
@@ -65,11 +68,7 @@ export interface Backend {
   }): Promise<void>;
 }
 
-// `implements MemoHook` is added in Task 1.5 once `record()` lands — the
-// interface requires both `consult` and `record`, and this task only builds
-// `consult`. Declaring the annotation early would break `pnpm typecheck`
-// (and thus the pre-commit hook) between these two TDD steps.
-export class MemoDriver {
+export class MemoDriver implements MemoHook {
   private pending: StoredRecord | null = null;
 
   constructor(
@@ -90,6 +89,44 @@ export class MemoDriver {
       return null;
     } catch {
       return null; // every read error degrades to a miss (spec §8)
+    }
+  }
+
+  async record(files: StagedFile[], derived: Buffer, pnpmVersion?: string): Promise<void> {
+    if (!this.backend || !this.write) return; // local forms never write
+    this.pending = {
+      epoch: EPOCH,
+      inputsHash: inputsHash(files, INVOCATION),
+      derivedHash: sha256(derived),
+      toolVersion: toolVersion(),
+      pnpmVersion: pnpmVersion ?? 'unknown',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /** Post one verdict check run for this run's outcome, embedding the stashed
+   * record on a pass. Best-effort: a failure never changes the verdict — it
+   * returns a warning (drift wording on the pass path). */
+  async postVerdict(v: { outcome: Outcome; exit: 0 | 1; headSha: string }): Promise<string[]> {
+    if (!this.backend || !this.write) return [];
+    const isPass = v.outcome.kind === 'pass';
+    let summary = verdictSummary(v.outcome);
+    if (isPass && this.pending) summary += `\n${embedRecord(this.pending)}`;
+    try {
+      await this.backend.postVerdict({
+        headSha: v.headSha,
+        conclusion: conclusion(v.outcome, v.exit),
+        title: `lockfile-assay: ${v.outcome.kind}`,
+        summary,
+      });
+      return [];
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      return [
+        isPass
+          ? `could not record the derivation memo (${reason}); this pass is not durable — re-runs will re-resolve against the registry (spec §7 drift)`
+          : `could not post the verdict check run (${reason})`,
+      ];
     }
   }
 }

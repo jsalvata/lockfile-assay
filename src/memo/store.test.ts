@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { INVOCATION } from '../derive.js';
 import type { Outcome } from '../outcome.js';
 import type { StagedFile } from '../staging.js';
+import { parseRecord } from './checks-api.js';
 import { EPOCH, inputsHash } from './key.js';
 import type { Backend, StoredRecord } from './store.js';
 import { conclusion, MemoDriver, sha256 } from './store.js';
@@ -95,5 +96,86 @@ describe('MemoDriver.consult — pass or miss, never a failure', () => {
   it('is a no-op (miss) with a null backend', async () => {
     const d = new MemoDriver(null, false);
     expect(await d.consult(files, committed)).toBeNull();
+  });
+});
+
+function capturingBackend() {
+  const posted: Parameters<Backend['postVerdict']>[0][] = [];
+  const backend: Backend = {
+    listRecords: async () => [],
+    postVerdict: async (v) => {
+      posted.push(v);
+    },
+  };
+  return { backend, posted };
+}
+
+const derived = Buffer.from('derived-lock');
+
+describe('MemoDriver.record + postVerdict — the write path', () => {
+  it('embeds the record in a success verdict on a live pass', async () => {
+    const { backend, posted } = capturingBackend();
+    const d = new MemoDriver(backend, true);
+    await d.record(files, derived, '10.34.1'); // evaluate() calls this on a byte-match pass
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'pass' } as Outcome,
+      exit: 0,
+      headSha: 'deadbeef',
+    });
+    expect(warnings).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].conclusion).toBe('success');
+    expect(posted[0].headSha).toBe('deadbeef');
+    const rec = parseRecord(posted[0].summary);
+    expect(rec?.inputsHash).toBe(inputsHash(files, INVOCATION));
+    expect(rec?.derivedHash).toBe(sha256(derived));
+    expect(rec?.pnpmVersion).toBe('10.34.1');
+    expect(rec?.epoch).toBe(EPOCH);
+  });
+
+  it('posts a failure verdict with no record on a mismatch (never memoised)', async () => {
+    const { backend, posted } = capturingBackend();
+    const d = new MemoDriver(backend, true);
+    // record() is NOT called on a mismatch — evaluate() only calls it on a pass
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'mismatch', committed, derived } as Outcome,
+      exit: 1,
+      headSha: 'deadbeef',
+    });
+    expect(warnings).toEqual([]);
+    expect(posted[0].conclusion).toBe('failure');
+    expect(parseRecord(posted[0].summary)).toBeNull();
+  });
+
+  it('warns (drift wording) but never throws when a pass write fails', async () => {
+    const backend: Backend = {
+      listRecords: async () => [],
+      postVerdict: async () => {
+        throw new Error('403 Forbidden');
+      },
+    };
+    const d = new MemoDriver(backend, true);
+    await d.record(files, derived, '10.34.1');
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'pass' } as Outcome,
+      exit: 0,
+      headSha: 'deadbeef',
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/not durable/);
+    expect(warnings[0]).toMatch(/drift/);
+  });
+
+  it('is a no-op when write is false (local read-only forms never post)', async () => {
+    const { backend, posted } = capturingBackend();
+    const d = new MemoDriver(backend, false);
+    await d.record(files, derived, '10.34.1');
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'pass' } as Outcome,
+      exit: 0,
+      headSha: 'deadbeef',
+    });
+    expect(warnings).toEqual([]);
+    expect(posted).toHaveLength(0);
   });
 });
