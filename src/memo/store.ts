@@ -4,7 +4,8 @@ import { INVOCATION } from '../derive.js';
 import type { MemoProvenance, Outcome } from '../outcome.js';
 import type { StagedFile } from '../staging.js';
 import { toolVersion } from '../version.js';
-import { embedRecord } from './checks-api.js';
+import { appId, discoverToken, originRepo } from './auth.js';
+import { ChecksApiBackend, embedRecord } from './checks-api.js';
 import { EPOCH, inputsHash } from './key.js';
 
 export type StoredRecord = {
@@ -129,4 +130,40 @@ export class MemoDriver implements MemoHook {
       ];
     }
   }
+}
+
+export const CHECK_NAME = 'lockfile-assay';
+
+/**
+ * Construct a memo driver from the ambient CI context. Requires a token, a
+ * github origin, and the App id; missing any of them yields a null-object
+ * driver (consult → miss, postVerdict → no-op). `pr` is needed only for consult
+ * (posting a verdict needs the head SHA, not the PR number). `apiBase` /
+ * `fetchImpl` are test seams.
+ */
+export function buildMemoDriver(opts: {
+  write: boolean;
+  pr?: number;
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  apiBase?: string;
+  fetchImpl?: typeof fetch;
+}): MemoDriver {
+  const env = opts.env ?? process.env;
+  const token = discoverToken(env);
+  const repo = originRepo(opts.cwd);
+  const id = appId(env);
+  if (!token || !repo || id === null) return new MemoDriver(null, opts.write);
+  const slash = repo.indexOf('/');
+  const backend = new ChecksApiBackend({
+    token,
+    owner: repo.slice(0, slash),
+    repo: repo.slice(slash + 1),
+    appId: id,
+    checkName: CHECK_NAME,
+    pr: opts.pr,
+    apiBase: opts.apiBase,
+    fetchImpl: opts.fetchImpl,
+  });
+  return new MemoDriver(backend, opts.write);
 }

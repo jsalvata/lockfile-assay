@@ -5,7 +5,7 @@ import type { StagedFile } from '../staging.js';
 import { parseRecord } from './checks-api.js';
 import { EPOCH, inputsHash } from './key.js';
 import type { Backend, StoredRecord } from './store.js';
-import { conclusion, MemoDriver, sha256 } from './store.js';
+import { buildMemoDriver, CHECK_NAME, conclusion, MemoDriver, sha256 } from './store.js';
 
 const O = {
   pass: { kind: 'pass' } as Outcome,
@@ -177,5 +177,23 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     });
     expect(warnings).toEqual([]);
     expect(posted).toHaveLength(0);
+  });
+});
+
+describe('buildMemoDriver — null-object when context is absent', () => {
+  it('CHECK_NAME is the stable required-check name', () => {
+    expect(CHECK_NAME).toBe('lockfile-assay');
+  });
+
+  it('returns a driver that misses/no-ops when there is no token', async () => {
+    // env with no token and an empty PATH so `gh auth token` finds nothing
+    const d = buildMemoDriver({ write: true, pr: 1, env: { PATH: '/nonexistent' }, cwd: '.' });
+    expect(await d.consult(files, committed)).toBeNull();
+    const warnings = await d.postVerdict({
+      outcome: { kind: 'pass' } as Outcome,
+      exit: 0,
+      headSha: 'x',
+    });
+    expect(warnings).toEqual([]);
   });
 });
