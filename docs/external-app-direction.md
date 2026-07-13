@@ -66,22 +66,27 @@ honoring `.pnpmfile.cjs` would force this argument to be rebuilt.
 
 ## Migration status (this repo)
 
-The design above is adopted in the docs; the implementation and this repo's own
-deployment still have to catch up:
+The design above is adopted in the docs; the implementation does not exist yet,
+so **dogfooding is removed until it does** — the interim branch-store deployment
+would have shipped a design we've already superseded, and running the assay on
+itself with no anchored backend is worse than not running it. Removed: the local
+hooks' assay invocation, `.github/workflows/assay.yml`, the `ci.yml` dogfood
+step, and `.lockfile-assay.json`; the GitHub-side App / environment / secrets /
+memo branch / ruleset are torn down too. The reference artifacts consumers use
+(`examples/assay.yml`, `action.yml`, the setup doc) stay — they describe the
+anchored form, not this repo's deployment.
 
-- **CLI:** `memo/store.ts` targets the Contents API; it needs the Checks API
-  backend (post the verdict check run, embed/consult records). The §13 backend
-  interface was built for this swap.
-- **Dogfood infra**, once the backend lands: change the App's permission from
-  Contents R/W to **Checks R/W**; switch the `memo-write` environment from
-  required-reviewers to a **deployment-branch policy** (and rename if desired);
-  retire the `lockfile-assay/memo` orphan branch and its ruleset; pin the
-  required check to the App.
-- **`.github/workflows/assay.yml`** stays on the interim reviewer-gated form
-  until then (flagged in the file). Note the dogfood workflow intentionally
-  violates the "execute nothing head-controlled" rule — it builds and runs the
-  CLI under review; after migration the *gate* should run the pinned published
-  assay, with head's CLI exercised in a separate token-less `pull_request` job.
+Re-adoption, once the backend lands, runs the **published**
+`setup-github-app.md` from a clean slate (which also validates those
+instructions end to end):
+
+- **CLI first:** `memo/store.ts` targets the Contents API; it needs the Checks
+  API backend (post the verdict check run, embed/consult records). The §13
+  backend interface was built for this swap.
+- **Then dogfood** the anchored form: a fresh Checks-R/W App, a
+  deployment-branch-restricted environment, a `pull_request_target` gate running
+  the *pinned published* assay, and head's CLI exercised separately in a
+  token-less `pull_request` job.
 
 ## Rejected alternatives
 
