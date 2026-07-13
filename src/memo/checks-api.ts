@@ -77,6 +77,10 @@ export class ChecksApiBackend implements Backend {
     const shas = await this.candidateShas(this.o.pr);
     const records: StoredRecord[] = [];
     for (const sha of shas) {
+      // No page loop here (unlike candidateShas below): a single SHA/app/check-name
+      // combination realistically has far fewer than 100 runs, so per_page=100 is
+      // ample; any overflow just drops the oldest runs from this SHA, which is a
+      // safe miss (the memo re-derives), never a false record.
       const url =
         `${this.api}/repos/${this.o.owner}/${this.o.repo}/commits/${sha}/check-runs` +
         `?app_id=${this.o.appId}&check_name=${encodeURIComponent(this.o.checkName)}&per_page=100`;
