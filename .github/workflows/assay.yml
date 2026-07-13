@@ -1,0 +1,48 @@
+# lockfile-assay — anchored CI form with the derivation memo (spec §8).
+#
+# This is the ONLY form that writes memo records. It mints a short-lived GitHub
+# App installation token and passes it to the CLI in env; the App's identity is
+# the sole writer the memo branch's ruleset allows, so the verdict this workflow
+# records is trustworthy even though the PR author controls the rest of the run.
+#
+# Setup (App, secrets, memo branch, ruleset) is in docs/setup-github-app.md.
+#
+# NOTE (dogfooding): the reference workflow in examples/assay.yml runs
+# `npx --yes lockfile-assay`, which would fetch the PUBLISHED package. This repo
+# is lockfile-assay itself, so — like the Dogfood step in ci.yml — we build and
+# run the CLI under review (`node dist/cli.js`) instead.
+name: lockfile-assay
+on:
+  pull_request:
+jobs:
+  assay:
+    runs-on: ubuntu-latest
+    # SECURITY: this job mints a memo-writer token from the App secret, and a
+    # required status check does NOT stop a PR from minting it (see
+    # docs/setup-github-app.md section 6). For same-repo PR safety, put
+    # ASSAY_APP_ID / ASSAY_APP_PRIVATE_KEY on a GitHub Environment gated by
+    # required reviewers and enable it here:
+    #   environment: memo-write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/create-github-app-token@v1
+        id: memo-token
+        with:
+          app-id: ${{ secrets.ASSAY_APP_ID }}
+          private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+      - name: lockfile-assay
+        env:
+          LOCKFILE_ASSAY_TOKEN: ${{ steps.memo-token.outputs.token }}
+        run: |
+          node dist/cli.js check \
+            --base "origin/${{ github.base_ref }}" --head HEAD \
+            --memo-write --json
