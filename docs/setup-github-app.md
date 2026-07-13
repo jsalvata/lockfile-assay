@@ -156,3 +156,29 @@ workflow can post a same-named green check via its own `GITHUB_TOKEN`.
 
 See spec §8 ("The store — writes are the trust boundary") for the full
 rationale and the alternatives that were rejected.
+
+## Removing it
+
+Teardown is the reverse of setup, and the order matters for the same reason
+setup's did: a required check with no producer blocks every merge. **Un-require
+first, then remove what posts it.**
+
+1. **Un-require the check.** Branch protection / ruleset → required status
+   checks → remove the App-posted assay check. Do this first — once the workflow
+   or App is gone the check stops reporting, and a still-required check that
+   never arrives leaves every open PR merge-blocked.
+2. **Remove the workflow.** Delete `.github/workflows/assay.yml` (and
+   `.lockfile-assay.json`, to stop configuring the assay at all). No further
+   verdicts are posted.
+3. **Delete the environment.** Settings → Environments → the `lockfile-assay`
+   environment → Delete — this removes `ASSAY_APP_ID` / `ASSAY_APP_PRIVATE_KEY`
+   with it.
+4. **Delete the App.** Settings → Developer settings → GitHub Apps → the App →
+   Edit → Delete GitHub App. Deleting auto-uninstalls it from every repo; there
+   is no separate uninstall step.
+
+**There is no memo store to purge.** Records live inside the App's past check
+runs — inert verdict artifacts, not a branch or a store. Once the App is gone
+they are simply never consulted again (and a re-adoption under a new App identity
+ignores them regardless). Setup and teardown are just "an App, an environment, a
+workflow, a required-check pin" — nothing persistent to provision or clean up.
