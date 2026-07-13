@@ -34,6 +34,26 @@ export function resolveMemo(
 }
 
 /**
+ * Format the disabled-memo warning for its channel. Under GitHub Actions, a
+ * `::warning::` workflow command — which the runner renders as a PR / run-summary
+ * annotation the reviewer actually sees; elsewhere, a plain `warning:` line. The
+ * caller writes it to STDERR either way, so a `--json` consumer's stdout stays
+ * clean. Exported for tests.
+ */
+export function memoWarning(reason: string, env: NodeJS.ProcessEnv = process.env): string {
+  const message =
+    `--memo-write is set but the memo is unavailable (${reason}); ` +
+    'passing derivations will not be recorded, so later runs re-derive and an ' +
+    'unchanged lockfile may mismatch on registry drift. See docs/setup-github-app.md.';
+  if (env.GITHUB_ACTIONS === 'true') {
+    // Escape the runner's reserved characters (%, CR, LF) in the command message.
+    const escaped = message.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+    return `::warning::${escaped}`;
+  }
+  return `warning: ${message}`;
+}
+
+/**
  * Assemble the derivation-memo hook (spec §8). Discovery is LAZY (via
  * lazyMemoClient): a check touches the memo only inside evaluate()'s
  * consult/record, past the trigger + mode + preflight gates, so the common
@@ -105,13 +125,7 @@ export function buildProgram(): Command {
           // never a check failure. (resolveMemo re-runs on consult, but the writing
           // form is CI-only and not latency-sensitive.)
           const m = resolveMemo();
-          if ('unavailable' in m) {
-            console.error(
-              `warning: --memo-write is set but the memo is unavailable (${m.unavailable}); ` +
-                'passing derivations will not be recorded, so later runs re-derive and an ' +
-                'unchanged lockfile may mismatch on registry drift. See docs/setup-github-app.md.',
-            );
-          }
+          if ('unavailable' in m) console.error(memoWarning(m.unavailable));
         }
         const r = await runCheck({ base: o.base, head: o.head, memo: buildMemo(!!o.memoWrite) });
         console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
