@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { Outcome } from '../outcome.js';
+import { INVOCATION } from '../derive.js';
+import type { MemoProvenance, Outcome } from '../outcome.js';
+import type { StagedFile } from '../staging.js';
+import { EPOCH, inputsHash } from './key.js';
 
 export type StoredRecord = {
   epoch: number;
@@ -46,5 +49,47 @@ export function verdictSummary(outcome: Outcome): string {
       return `Unsupported input: ${outcome.reasons.join('; ')}.`;
     case 'cannot-evaluate':
       return outcome.reason;
+  }
+}
+
+export interface Backend {
+  // records parsed from the *success* check runs on every head SHA this PR has
+  // run against (current chain + force-pushed-away heads), filtered to the App
+  // id + check name. Throws on transport error; the adapter maps it to a miss.
+  listRecords(): Promise<StoredRecord[]>;
+  postVerdict(v: {
+    headSha: string;
+    conclusion: 'success' | 'failure' | 'neutral';
+    title: string;
+    summary: string;
+  }): Promise<void>;
+}
+
+// `implements MemoHook` is added in Task 1.5 once `record()` lands — the
+// interface requires both `consult` and `record`, and this task only builds
+// `consult`. Declaring the annotation early would break `pnpm typecheck`
+// (and thus the pre-commit hook) between these two TDD steps.
+export class MemoDriver {
+  private pending: StoredRecord | null = null;
+
+  constructor(
+    private readonly backend: Backend | null,
+    private readonly write: boolean,
+  ) {}
+
+  async consult(files: StagedFile[], committed: Buffer | null): Promise<MemoProvenance | null> {
+    if (!this.backend || !committed) return null;
+    try {
+      const want = inputsHash(files, INVOCATION);
+      const committedHash = sha256(committed);
+      for (const r of await this.backend.listRecords()) {
+        if (r.epoch === EPOCH && r.inputsHash === want && r.derivedHash === committedHash) {
+          return { hit: true, derivedAt: r.timestamp, toolVersion: r.toolVersion };
+        }
+      }
+      return null;
+    } catch {
+      return null; // every read error degrades to a miss (spec §8)
+    }
   }
 }
