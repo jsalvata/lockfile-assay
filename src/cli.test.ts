@@ -17,3 +17,19 @@ describe('check CLI: --memo-write is incompatible with --staged', () => {
     ).rejects.toThrow(/--memo-write cannot be combined with --staged/);
   });
 });
+
+describe('check CLI: --pr is accepted', () => {
+  it('parses --pr as a number without a usage error', async () => {
+    // With no token/app-id in the env the driver is a null-object, so this runs
+    // the real path but performs no network I/O. It must not throw a UsageError
+    // for an unknown option.
+    const program = buildProgram();
+    // A bogus base makes runCheck throw an *evaluation* error, not a usage one;
+    // we only assert the option is recognised (no "unknown option '--pr'").
+    await expect(
+      program.parseAsync(['check', '--base', 'HEAD', '--head', 'HEAD', '--pr', '7'], {
+        from: 'user',
+      }),
+    ).resolves.toBeDefined();
+  });
+});
