@@ -72,3 +72,11 @@ export function remoteDefaultBranch(cwd?: string): string | null {
   }
   return null;
 }
+
+// The `origin` remote's URL, or null when there is no origin. The memo's
+// origin parsing (src/memo/auth.ts) needs the raw URL; exposing it as a named
+// helper keeps the low-level git() wrapper internal.
+export function remoteOriginUrl(cwd?: string): string | null {
+  const r = git(['remote', 'get-url', 'origin'], { cwd });
+  return r.status === 0 ? r.stdout.toString().trim() : null;
+}

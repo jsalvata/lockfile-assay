@@ -131,6 +131,27 @@ pnpm exec lockfile-assay prepush
 The escape hatch is git's native `--no-verify`, on either hook — skipping a courtesy
 preview changes nothing about the required check.
 
+## Durable verdicts — the derivation memo
+
+Every evaluation re-resolves against the registry, and each resolution is a fresh roll
+of the drift dice (§7): a passing PR that keeps receiving source-only pushes, a flaky
+re-run, a merge-queue re-validation — all re-ask a question already answered. The memo
+records the *first* trusted evaluation of a given input set so identical inputs later
+short-circuit instead of re-rolling.
+
+- **What it buys:** no re-rolls of §7's drift dice. Once a trusted CI run has recorded
+  that these exact staged inputs derive this lockfile, a later run on the identical
+  bytes serves the remembered pass — no registry round-trip, no new drift window.
+- **What it never does:** a memo can **only** short-circuit to a **pass**. It cannot
+  produce a failure. A stale record falls through to a live re-derive; a mismatch is
+  never memoised. Only the anchored CI form (`check --memo-write`) writes; the local
+  hook forms read at most.
+
+The store is an orphan branch in your own repo, written solely by a dedicated GitHub
+App whose token a branch ruleset makes the only allowed writer — so a PR author cannot
+forge a verdict. Setup (App, secrets, memo branch, ruleset, reference workflow) is in
+[`docs/setup-github-app.md`](docs/setup-github-app.md). See spec §8 for the full design.
+
 See [`docs/spec.md`](docs/spec.md) for the full design: the check mechanics, the
 failure-report contract, the local `prepush` / `--staged` forms, the derivation memo,
 prior art, and the roadmap.

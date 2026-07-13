@@ -1,0 +1,101 @@
+import { createHash } from 'node:crypto';
+import type { MemoHook } from '../check.js';
+import { INVOCATION } from '../derive.js';
+import { toolVersion } from '../version.js';
+import { EPOCH, inputsHash } from './key.js';
+import type { MemoRecord, MemoStore } from './store.js';
+
+const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+
+// Read from package.json, NOT `npm_package_version` — that env var is unset when
+// a git hook invokes node directly, which would stamp every record 'unknown'
+// (spec §12 Q7). Computed once at module load.
+const TOOL_VERSION = toolVersion();
+
+/**
+ * Defense-in-depth (C3 carry-forward): `store.get` casts the fetched JSON to
+ * `MemoRecord` with NO shape validation, so a GitHub-served malformed 200 could
+ * hand us junk (`[]`, `42`, `{}`, a record with a numeric sha). Before a record
+ * can short-circuit a check to PASS it MUST be a well-formed object with all
+ * four fields present as the right types. Anything else is treated as a MISS —
+ * never a hit — so a garbled memo degrades to a live re-derive, never a false
+ * pass.
+ */
+function isMemoRecord(v: unknown): v is MemoRecord {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    !Array.isArray(v) &&
+    typeof (v as MemoRecord).derivedLockfileSha256 === 'string' &&
+    typeof (v as MemoRecord).toolVersion === 'string' &&
+    typeof (v as MemoRecord).pnpmVersion === 'string' &&
+    typeof (v as MemoRecord).derivedAt === 'string'
+  );
+}
+
+/**
+ * Adapt a `MemoStore` to check.ts's `MemoHook` — the memo TRUST BOUNDARY that
+ * turns a memo hit into a skipped derive (a `pass`, spec §8).
+ *
+ * - `consult`: a hit requires a well-formed record whose `derivedLockfileSha256`
+ *   equals `sha256(committed)`. A missing/stale/malformed record falls through
+ *   to null so check.ts does a live resolve — a stale entry is NEVER a false
+ *   pass (spec §8 step 3).
+ * - `record`: a no-op when `write` is false (local forms never write). There is
+ *   no "record a mismatch" path — check.ts only calls `record` on a pass, so a
+ *   mismatch is structurally never memoised.
+ */
+/**
+ * Wrap a memo-client factory so the client — and the credential discovery behind
+ * it (`git remote get-url origin`, `gh auth token`) — is built lazily, at most
+ * once, on the first `consult`/`record`. buildMemo (cli.ts) hands a hook to every
+ * `check`/`prepush` invocation, but the memo is only touched inside evaluate()'s
+ * consult/record, past the trigger + mode + preflight gates (spec §8). So a
+ * source-only commit or push — the common case, a vacuous pass — resolves nothing;
+ * a run that DOES consult is already about to spend seconds in a pnpm derive, so
+ * the subprocesses are noise. `make` returns null when the memo is unavailable
+ * (no github origin / no token); that is memoised via the `undefined` sentinel so
+ * we don't re-discover on every call, and consult then misses / record no-ops —
+ * exactly as a null hook behaves.
+ */
+export function lazyMemoClient(make: () => MemoHook | null): MemoHook {
+  let inner: MemoHook | null | undefined;
+  const get = (): MemoHook | null => {
+    if (inner === undefined) inner = make();
+    return inner;
+  };
+  return {
+    async consult(files, committed) {
+      return (await get()?.consult(files, committed)) ?? null;
+    },
+    async record(files, derived, pnpmVersion) {
+      await get()?.record(files, derived, pnpmVersion);
+    },
+  };
+}
+
+export function makeMemoClient(
+  store: MemoStore,
+  opts: { write: boolean; pnpmVersion?: string },
+): MemoHook {
+  return {
+    async consult(files, committed) {
+      if (committed === null) return null;
+      const record = await store.get(EPOCH, inputsHash(files, INVOCATION));
+      if (!isMemoRecord(record) || record.derivedLockfileSha256 !== sha256(committed)) return null;
+      return { hit: true, derivedAt: record.derivedAt, toolVersion: record.toolVersion };
+    },
+    async record(files, derived, pnpmVersion) {
+      if (!opts.write) return;
+      await store.put(EPOCH, inputsHash(files, INVOCATION), {
+        derivedLockfileSha256: sha256(derived),
+        toolVersion: TOOL_VERSION,
+        // The effective pnpm version comes from the call site (check.ts, where the
+        // derivation just ran) — the store construction can't know it. Fall back to
+        // the construction opt, then 'unknown', so provenance is real (spec §8).
+        pnpmVersion: pnpmVersion ?? opts.pnpmVersion ?? 'unknown',
+        derivedAt: new Date().toISOString(),
+      });
+    },
+  };
+}

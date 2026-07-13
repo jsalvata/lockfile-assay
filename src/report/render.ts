@@ -1,20 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Mode, Outcome } from '../outcome.js';
+import { toolVersion } from '../version.js';
 import type { Delta } from './delta.js';
 
 export const SCHEMA_VERSION = 1;
 
-const TOOL_VERSION: string = (() => {
-  try {
-    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-    return pkg.version as string;
-  } catch {
-    return 'unknown';
-  }
-})();
+const TOOL_VERSION: string = toolVersion();
 
 export type ReportInput = {
   outcome: Outcome;

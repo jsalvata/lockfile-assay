@@ -28,7 +28,7 @@ import { bytesEqual } from './verdict.js';
 
 export type MemoHook = {
   consult(files: StagedFile[], committed: Buffer | null): Promise<MemoProvenance | null>;
-  record(files: StagedFile[], derived: Buffer): Promise<void>;
+  record(files: StagedFile[], derived: Buffer, pnpmVersion?: string): Promise<void>;
 };
 
 export type CheckResult = {
@@ -193,14 +193,16 @@ async function evaluate(opts: {
   const committed = catFile(head, 'pnpm-lock.yaml', cwd);
 
   const memoHit = (await opts.memo?.consult(files, committed)) ?? null;
-  if (memoHit) return result({ kind: 'pass', memo: memoHit }, mode, base, headLabel);
+  // Require an EXPLICIT true hit before skipping the derive. Moot-but-defensive: the
+  // client only ever returns `{hit:true,...}` or null today.
+  if (memoHit?.hit === true) return result({ kind: 'pass', memo: memoHit }, mode, base, headLabel);
 
   const dir = mkdtempSync(join(tmpdir(), 'lockfile-assay-'));
   materialize(files, dir);
 
-  let effective: string;
+  let pnpmVersion: string;
   try {
-    effective = effectivePnpmVersion(dir);
+    pnpmVersion = effectivePnpmVersion(dir);
   } catch (e) {
     // can't even launch the toolchain (offline corepack download of a bumped
     // pin, spawn failure): same failClosed distinction as derive — the CI form
@@ -218,14 +220,14 @@ async function evaluate(opts: {
       headLabel,
     );
   }
-  if (effective !== pin.version) {
+  if (pnpmVersion !== pin.version) {
     return result(
-      { kind: 'toolchain-skew', pinned: pin.version, effective },
+      { kind: 'toolchain-skew', pinned: pin.version, effective: pnpmVersion },
       mode,
       base,
       headLabel,
       {
-        toolchain: { pinned: pin.version, effective },
+        toolchain: { pinned: pin.version, effective: pnpmVersion },
       },
     );
   }
@@ -249,14 +251,14 @@ async function evaluate(opts: {
   }
 
   if (bytesEqual(committed, derived.lockfile)) {
-    await opts.memo?.record(files, derived.lockfile);
+    await opts.memo?.record(files, derived.lockfile, pnpmVersion);
     return result({ kind: 'pass' }, mode, base, headLabel, {
-      toolchain: { pinned: pin.version, effective },
+      toolchain: { pinned: pin.version, effective: pnpmVersion },
     });
   }
 
   return result({ kind: 'mismatch', committed, derived: derived.lockfile }, mode, base, headLabel, {
-    toolchain: { pinned: pin.version, effective },
+    toolchain: { pinned: pin.version, effective: pnpmVersion },
     deltas: deltaSummary(committed, derived.lockfile),
     diffExcerpt: diffExcerpt(committed, derived.lockfile),
     remedy: refreshRecipe(baseHasLock ? base : null),

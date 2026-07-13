@@ -33,7 +33,26 @@ Reasoning order: feature spike → prep → cleanup. Ship order: A → B → C.
 - **PR C — Derivation memo** (`jsalvata/memo` off PR B's branch or `main` after B): validation spike, key/store/auth/client, wiring + provenance, App setup docs, `action.yml`, release checklist.
 - **PR 3 — Cleanup refactor** (`jsalvata/cleanup-v1`): *conditional* — Task C7 renders the explicit verdict after PR C (candidates: test-helper dedup across suites, naming drift). If nothing qualifies, record the skip in the PR C description.
 
-Candidate prep for next time: none yet — revisit when planning the npm backend (spec §11), which will want a `PackageManagerAdapter` seam derived from real friction, not speculation.
+Candidate prep for next time: revisit when planning the npm backend (spec §11), which will want a `PackageManagerAdapter` seam derived from real friction, not speculation. **Concrete candidate surfaced during v1 execution:** a shared "unsupported-input / trigger" predicate. v1 detects `.pnpmfile.*` and `package.yaml`/`package.json5` in *two* places with byte-identical predicates — `src/trigger.ts` (so an introducing PR triggers) and `src/preflight.ts` (so it's refused). The npm backend will add its own unsupported-input set, so extracting one shared predicate (that both trigger and preflight consume) before that work removes the divergence risk the A11 review flagged. See the C7 verdict for the full v1 cleanup backlog.
+
+## C7 — Cleanup verdict (PR 3 of the refactor bookend)
+
+Audited after the feature landed. **Verdict: real residue exists, but the cleanup PR is deferred to post-merge** — the refactor bookend ships `1→2→3`, and authoring a pure-refactor PR against three still-open draft PRs (A→C) is churn on unmerged code. The backlog below is recorded so a clean `jsalvata/cleanup-v1` pure-refactor PR can be authored once A→C merge.
+
+**Pure production-code refactor (the one structural item):**
+- Extract the shared `.pnpmfile.*` + `package.yaml`/`package.json5` predicate duplicated across `src/trigger.ts` and `src/preflight.ts` (promoted above as npm-backend candidate prep).
+- Lazily construct the memo hook in `src/cli.ts` — `buildMemo` currently runs credential discovery (`git remote`, maybe a `gh` spawn) on *every* hook invocation, even untriggered/`off` runs; constructing it only when the check actually reaches the memo would save a per-commit subprocess (C5 review, Minor).
+
+**Test-quality residue (not pure-refactor material; fold into the cleanup PR or leave):**
+- `test/integration/empirics.test.ts` reuse test: delete the vestigial `README.md` write with the self-negating comment (real trigger is the `description` edit).
+- `test/integration/attacks.test.ts`: make the version-choice tamper self-consistent; the drift self-heal relock omits `--prefer-frozen-lockfile` vs the tool's verbatim recipe; `mirror.stop()` not in `finally`.
+- `test/unit/memo-client.test.ts:219,221` label wording; add the `gh auth token` positive-path case.
+- `test/integration/memo.test.ts` registry restore outside `try/finally`.
+
+**Behavior tweak (belongs in a feature PR, not a pure refactor):**
+- `check --staged --memo-write` is silently ignored rather than rejected with a `UsageError` (C5 review, Minor) — decide if worth the honesty.
+
+None of these affect correctness (all reviewed clean); they are hygiene. Cross-referencing comments were added inline where dedup wasn't cleanly possible (e.g. the `npm_config_*` strip in `test/helpers/scratch-repo.ts` vs `src/toolchain.ts` — a test helper can't import a `src/` trust-path module).
 
 ---
 

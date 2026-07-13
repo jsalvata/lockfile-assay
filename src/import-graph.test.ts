@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const TRUST_PATH = [
@@ -32,6 +32,20 @@ const TRUST_SAFE = new Set([
   './verdict.js',
 ]);
 
+/** Every `.ts` file under src/, RECURSIVELY, as paths relative to SRC (posix `/`). */
+function allSrcFiles(): string[] {
+  const out: string[] = [];
+  const walk = (abs: string) => {
+    for (const ent of readdirSync(abs, { withFileTypes: true })) {
+      const child = join(abs, ent.name);
+      if (ent.isDirectory()) walk(child);
+      else if (ent.name.endsWith('.ts')) out.push(relative(SRC, child).split('\\').join('/'));
+    }
+  };
+  walk(SRC);
+  return out;
+}
+
 describe('spec §13 trust-path discipline', () => {
   it('trust-path modules import only node builtins and each other', () => {
     for (const file of TRUST_PATH) {
@@ -42,19 +56,12 @@ describe('spec §13 trust-path discipline', () => {
     }
   });
 
+  // Walk ALL of src/ recursively (not a hand-maintained file list) so a yaml
+  // import in any module — including subdirs like memo/ and report/, or a future
+  // new module — is caught. An explicit enumeration had a blind spot: memo/* was
+  // never scanned, so a yaml import there would give false "no violations".
   it('yaml is imported only by trigger and report/', () => {
-    const all = [
-      'trigger.ts',
-      'config.ts',
-      'check.ts',
-      'cli.ts',
-      'prepush.ts',
-      'outcome.ts',
-      'errors.ts',
-      ...TRUST_PATH,
-    ];
-    const reportFiles = readdirSync(join(SRC, 'report')).map((f) => `report/${f}`);
-    for (const file of [...all, ...reportFiles]) {
+    for (const file of allSrcFiles()) {
       const usesYaml = importsOf(file).some((i) => i === 'yaml');
       const allowed = file === 'trigger.ts' || file.startsWith('report/');
       if (usesYaml) expect(allowed, `${file} must not import yaml`).toBe(true);
