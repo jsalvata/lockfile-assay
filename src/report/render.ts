@@ -19,6 +19,7 @@ export type ReportInput = {
   deltas?: Delta[];
   diffExcerpt?: string;
   remedy?: string;
+  warnings?: string[];
 };
 
 export function refreshRecipe(baseRef: string | null): string {
@@ -71,6 +72,7 @@ export function renderJson(r: ReportInput): string {
       head: r.head,
       toolchain: skew,
       memo,
+      warnings: r.warnings,
       reasons,
       reason,
       delta: r.deltas,
@@ -108,5 +110,6 @@ export function renderHuman(r: ReportInput): string {
       );
   }
   if (r.outcome.kind === 'cannot-evaluate') lines.push(r.outcome.reason);
+  for (const w of r.warnings ?? []) lines.push(`warning: ${w}`);
   return lines.join('\n');
 }
