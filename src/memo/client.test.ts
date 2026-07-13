@@ -4,11 +4,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { MemoHook } from '../check.js';
 import { INVOCATION } from '../derive.js';
 import type { StagedFile } from '../staging.js';
 import { discoverToken, originRepo } from './auth.js';
-import { lazyMemoClient, makeMemoClient } from './client.js';
+import { makeMemoClient } from './client.js';
 import { EPOCH, inputsHash } from './key.js';
 import type { MemoRecord, MemoStore } from './store.js';
 
@@ -203,77 +202,6 @@ describe('makeMemoClient — record (write gate, spec §8)', () => {
     expect(Object.keys(client).sort()).toEqual(['consult', 'record']);
     expect(typeof client.consult).toBe('function');
     expect(typeof client.record).toBe('function');
-  });
-});
-
-// C7: buildMemo (cli.ts) wraps its credential discovery in lazyMemoClient so the
-// git/gh subprocesses run only if evaluate() actually reaches consult/record —
-// a vacuous run (the common source-only commit/push) discovers nothing.
-describe('lazyMemoClient — defers discovery to first use', () => {
-  function countingHook(): MemoHook & { calls: { consult: number; record: number } } {
-    const calls = { consult: 0, record: 0 };
-    return {
-      calls,
-      async consult() {
-        calls.consult++;
-        return { hit: true, derivedAt: 'z', toolVersion: 't' };
-      },
-      async record() {
-        calls.record++;
-      },
-    };
-  }
-
-  it('does not call make() at construction — a vacuous run never discovers credentials', () => {
-    let made = 0;
-    lazyMemoClient(() => {
-      made++;
-      return null;
-    });
-    expect(made).toBe(0);
-  });
-
-  it('resolves make() exactly once across repeated consult/record (memoised)', async () => {
-    let made = 0;
-    const inner = countingHook();
-    const memo = lazyMemoClient(() => {
-      made++;
-      return inner;
-    });
-    await memo.consult(FILES, COMMITTED);
-    await memo.record(FILES, DERIVED);
-    await memo.consult(FILES, COMMITTED);
-    expect(made).toBe(1); // discovered once, not per call (nor per prepush tip)
-    expect(inner.calls.consult).toBe(2);
-    expect(inner.calls.record).toBe(1);
-  });
-
-  it('memoises a null make() too — consult misses, record no-ops, make() still runs once', async () => {
-    let made = 0;
-    const memo = lazyMemoClient(() => {
-      made++;
-      return null; // no github origin / no token → memo unavailable
-    });
-    expect(await memo.consult(FILES, COMMITTED)).toBeNull();
-    await expect(memo.record(FILES, DERIVED)).resolves.toBeUndefined();
-    expect(made).toBe(1); // the undefined sentinel prevents re-discovery on every call
-  });
-
-  it('delegates consult/record arguments through to the resolved client', async () => {
-    const seen: { consult?: unknown[]; record?: unknown[] } = {};
-    const memo = lazyMemoClient(() => ({
-      async consult(f, c) {
-        seen.consult = [f, c];
-        return null;
-      },
-      async record(f, d, p) {
-        seen.record = [f, d, p];
-      },
-    }));
-    await memo.consult(FILES, COMMITTED);
-    await memo.record(FILES, DERIVED, '9.12.0');
-    expect(seen.consult).toEqual([FILES, COMMITTED]);
-    expect(seen.record).toEqual([FILES, DERIVED, '9.12.0']);
   });
 });
 

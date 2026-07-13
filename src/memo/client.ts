@@ -45,35 +45,6 @@ function isMemoRecord(v: unknown): v is MemoRecord {
  *   no "record a mismatch" path — check.ts only calls `record` on a pass, so a
  *   mismatch is structurally never memoised.
  */
-/**
- * Wrap a memo-client factory so the client — and the credential discovery behind
- * it (`git remote get-url origin`, `gh auth token`) — is built lazily, at most
- * once, on the first `consult`/`record`. buildMemo (cli.ts) hands a hook to every
- * `check`/`prepush` invocation, but the memo is only touched inside evaluate()'s
- * consult/record, past the trigger + mode + preflight gates (spec §8). So a
- * source-only commit or push — the common case, a vacuous pass — resolves nothing;
- * a run that DOES consult is already about to spend seconds in a pnpm derive, so
- * the subprocesses are noise. `make` returns null when the memo is unavailable
- * (no github origin / no token); that is memoised via the `undefined` sentinel so
- * we don't re-discover on every call, and consult then misses / record no-ops —
- * exactly as a null hook behaves.
- */
-export function lazyMemoClient(make: () => MemoHook | null): MemoHook {
-  let inner: MemoHook | null | undefined;
-  const get = (): MemoHook | null => {
-    if (inner === undefined) inner = make();
-    return inner;
-  };
-  return {
-    async consult(files, committed) {
-      return (await get()?.consult(files, committed)) ?? null;
-    },
-    async record(files, derived, pnpmVersion) {
-      await get()?.record(files, derived, pnpmVersion);
-    },
-  };
-}
-
 export function makeMemoClient(
   store: MemoStore,
   opts: { write: boolean; pnpmVersion?: string },
