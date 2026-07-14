@@ -69,19 +69,28 @@ jobs:
 
       - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@58d9247fcde0ff0b17e30b05959d7d9b3b85974d  # v1.11.1
         with:
-          # Our required check-runs from the CI workflow that must be green on the
-          # head SHA. "waiver-stamp" itself is deliberately NOT listed — its verdict
-          # IS the artifact this action already trusts.
+          # Our required CHECK-RUN names from the CI workflow, which must all be green
+          # on the head SHA. These are check-run names, NOT workflow job ids — the two
+          # diverge whenever a job sets `name:` or uses a matrix. Our `integration` job
+          # is a matrix over two pnpm versions, so it surfaces as two check-runs and
+          # each leg needs its own entry; the bare job id `integration` would match
+          # nothing, and the reviewer then waits forever rather than approve on an
+          # unverified check (fail-closed). Read the real names off a recent PR with:
+          #   gh api repos/jsalvata/lockfile-assay/commits/<head-sha>/check-runs \
+          #     --jq '.check_runs[].name'
+          # "waiver-stamp" itself is deliberately NOT listed — its verdict IS the
+          # artifact this action already trusts.
           ci-checks: |
             test
             integration (9.12.0)
             integration (10.34.1)
             dogfood
-          # Empty on purpose: this repo's own lockfile-honesty gate (the `assay` job
-          # in lockfile-assay.yml) is not currently operational — the GitHub App that
-          # posts its verdict check is not installed, so `assay` reports failure and
-          # no App-identity check exists to require. Until that gate is restored,
-          # waiver-stamp APPROVEs will carry the "assumes the lockfile is honest"
-          # warning. Once the App gate posts a green required check, list its
-          # check-run name here.
-          lockfile-honesty-checks: ''
+          # Our own lockfile-honesty gate, and the reason waiver-stamp's "assumes the
+          # lockfile is honest" caveat does not apply here: waiver-stamp trusts the
+          # lockfile, so a poisoned tarball behind an allowlisted package name (version
+          # string unchanged) would otherwise slip past its dependency-bump gates. This
+          # is the check-run posted by the lockfile-assay GitHub App from
+          # lockfile-assay.yml — the App's identity, not the `assay` job id that
+          # github-actions reports. Branch protection pins the required check to the
+          # App, so that is the name with the trust behind it.
+          lockfile-honesty-checks: lockfile-assay

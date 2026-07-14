@@ -82,7 +82,15 @@ jobs:
       - name: waiver-stamp
         uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp@58d9247fcde0ff0b17e30b05959d7d9b3b85974d  # v1.11.1
         with:
-          waiver-version: 1.11.1  # pinned so verdicts don't shift under a new tool release
+          # Pinning `uses:` to a SHA pins the action's shell script but NOT, at this
+          # release, the CLI that computes the verdict: v1.11.1's action.yml defaults
+          # `waiver-version` to `latest`, so the tool whose judgment removes human
+          # review would float with whatever npm last published. Naming the version
+          # here closes that. waiver-stamp#32 makes the default self-pinning (it reads
+          # the version from the action's own checkout at the ref you pinned); once we
+          # bump the SHA above to a release carrying that fix, this `with:` block can
+          # be deleted and the single SHA pin will cover both action and tool.
+          waiver-version: 1.11.1
 
   # Release runs only AFTER test + integration pass, and only on a push to main
   # — never in parallel with the tests. Publishing to npm uses OIDC trusted
