@@ -15,9 +15,8 @@ failing (the two used to race as separate `push: main` workflows).
 the new version into the two artifacts that must name it exactly:
 
 - **`action.yml`** — the CLI version the composite action installs. This is what
-  makes `uses: jsalvata/lockfile-assay@vX.Y.Z` pin the *code that runs*
-  (before v1.0.2 it installed the CLI unpinned, i.e. `latest`, so the tag pinned
-  nothing). `src/action-yml.test.ts` fails the build if it is ever unpinned.
+  makes `uses: jsalvata/lockfile-assay@vX.Y.Z` pin the *code that runs*.
+  `src/action-yml.test.ts` fails the build if it is ever unpinned.
 - **`examples/lockfile-assay.yml`** — the action tag the reference workflow pins,
   so the copy-paste example never goes stale.
 
@@ -30,40 +29,26 @@ simply keeps running the previous release.
 
 ## The `v*` tag ruleset is load-bearing — do not weaken it
 
-The pin above only holds if the **tag** is honest. `uses: jsalvata/lockfile-assay@v1.0.2`
-resolves a git tag, and a tag is *mutable by default*: move it, and an adopter's
-workflow fetches a different `action.yml` — one free to install any CLI it likes,
-or to skip the CLI and exfiltrate the App token directly. The exact-version pin
-inside `action.yml` would then be worth nothing, because it is the attacker's
-`action.yml`.
+The `action.yml` pin above is only worth as much as the **tag** that resolves it,
+and that line is rewritten *during* the release that creates it, so it can never
+be a SHA. Its integrity comes instead from the tag being immutable: the
+**`immutable release tags`** ruleset — `refs/tags/v*`, `active`, restricting
+**update**, **deletion** and **non-fast-forward**, **empty bypass list**. The
+argument for why is spec §6, *"The workflow's own supply chain"*; what follows is
+only what an operator must not break.
 
-So the npm pin does not stand on its own. It rests on the tag being immutable,
-which is enforced by the **`immutable release tags`** ruleset on this repo:
-target `refs/tags/v*`, enforcement `active`, restricting **update**, **deletion**
-and **non-fast-forward**, with an **empty bypass list**. Adopters cannot check
-this for themselves — they pin a tag and trust us to hold it still — so treat it
-as part of the product, not repo hygiene.
+Three properties fail **quietly** when changed:
 
-Three properties of that ruleset are load-bearing, and each fails quietly if
-changed:
+- **Creation stays UNrestricted.** semantic-release cuts a new `v*` tag every
+  release; restricting creation breaks the pipeline outright. Tags are write-once:
+  freely created, never moved.
+- **The bypass list stays empty.** An admin bypass hands back the exact capability
+  the ruleset removes — and the threat model includes a compromised maintainer.
+- **Enforcement stays `active`.** `evaluate` looks identical in the UI and enforces
+  nothing.
 
-- **Creation is deliberately NOT restricted.** semantic-release must create a new
-  `v*` tag on every release; restricting creation breaks the pipeline outright.
-  Tags are write-once: freely created, never moved.
-- **The bypass list must stay empty.** The threat model explicitly includes a
-  compromised maintainer account, so an admin bypass would hand an attacker the
-  exact capability the ruleset removes.
-- **Enforcement must be `active`, not `evaluate`.** An `evaluate` ruleset looks
-  identical in the UI and enforces nothing.
-
-The consequence, accepted knowingly: releases are **append-only**. A bad `v1.0.3`
-cannot be quietly retagged — cut `v1.0.4`. That is the same trade we ask adopters
-to accept when they pin us.
-
-Third-party actions have no such constraint (nothing rewrites them at release
-time), so they are pinned by **commit SHA** instead, which needs no ruleset to be
-immutable. `src/workflow-pins.test.ts` fails the build if one reverts to a tag,
-and `.github/dependabot.yml` keeps the SHAs from freezing onto stale code.
+The accepted consequence: releases are **append-only**. A bad `v1.0.3` is
+superseded by `v1.0.4`, never retagged.
 
 ## npm publishing — OIDC trusted publishing (no `NPM_TOKEN`)
 

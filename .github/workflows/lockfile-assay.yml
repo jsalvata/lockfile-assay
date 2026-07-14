@@ -27,15 +27,9 @@
 # registry auth via the runner's ~/.npmrc FILE, not `npm_config_*` env vars —
 # add a step that writes ~/.npmrc before the check runs.
 #
-# THIRD-PARTY ACTIONS ARE PINNED BY COMMIT SHA, NOT BY TAG. A git tag is
-# mutable: whoever can push tags in the action's repo can repoint `v4` at new
-# code, which this job would then run WITH THE APP'S CREDENTIALS. That is not
-# hypothetical here — `create-github-app-token` MINTS the token whose identity
-# the whole anchor rests on (spec §6: "only the creating App can update its
-# runs"). Mint that token and you ARE the creating App, and assay verdicts
-# become forgeable. A SHA is the content hash of a commit and cannot be moved.
-# The trailing `# vX.Y.Z` comment is what Dependabot reads to offer bumps —
-# keep it in sync with the SHA. Guarded by src/workflow-pins.test.ts.
+# Third-party actions are pinned by commit SHA, not by tag: a tag is mutable, and
+# this job runs with the App's credentials. Bump them by the trailing `# vX.Y.Z`
+# (Dependabot reads it). Why it matters: spec §6, "The workflow's own supply chain".
 name: lockfile-assay
 on:
   pull_request_target:
@@ -58,16 +52,9 @@ jobs:
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-      # The one ref that is a TAG, not a SHA — deliberately. This line is
-      # rewritten on every release (scripts/set-release-version.sh, run during
-      # semantic-release's `prepare`), which happens BEFORE the release commit
-      # exists — so it cannot know its own future SHA. A SHA pin here would be
-      # unmaintainable by construction. The tag is instead held immutable by a
-      # repository ruleset on `v*` (update, deletion and non-fast-forward all
-      # restricted, no bypass actors) — server-enforced, the same class of fact
-      # the rest of the anchor rests on. And what actually EXECUTES is pinned a
-      # second time inside action.yml, which installs an exact CLI version from
-      # npm. See docs/RELEASING.md.
+      # A tag, not a SHA — deliberate and safe: our `v*` tags are immutable (a
+      # ruleset restricts update and deletion), and action.yml pins the exact CLI
+      # version it installs. Prefer a SHA anyway? `@<commit-sha>` works here too.
       - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}

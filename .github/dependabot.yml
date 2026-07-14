@@ -26,4 +26,5 @@ updates:
       # one PR for routine action bumps rather than four; a major bump still
       # lands on its own, where it belongs.
       actions-minor:
+        patterns: ['*']
         update-types: [minor, patch]
