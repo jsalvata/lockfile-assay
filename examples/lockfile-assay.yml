@@ -26,6 +26,10 @@
 # ambient env can't override the staged `.npmrc` (spec §6). Supply private
 # registry auth via the runner's ~/.npmrc FILE, not `npm_config_*` env vars —
 # add a step that writes ~/.npmrc before the check runs.
+#
+# Third-party actions are pinned by commit SHA, not by tag: a tag is mutable, and
+# this job runs with the App's credentials. Bump them by the trailing `# vX.Y.Z`
+# (Dependabot reads it). Why it matters: spec §6, "The workflow's own supply chain".
 name: lockfile-assay
 on:
   pull_request_target:
@@ -34,19 +38,23 @@ jobs:
     runs-on: ubuntu-latest
     environment: lockfile-assay
     steps:
-      - uses: actions/checkout@v4        # base branch — never the PR head
+      # base branch — never the PR head
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
       - name: fetch head as git data
         run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         id: app-token
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+      # A tag, not a SHA — deliberate and safe: our `v*` tags are immutable (a
+      # ruleset restricts update and deletion), and action.yml pins the exact CLI
+      # version it installs. Prefer a SHA anyway? `@<commit-sha>` works here too.
       - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}
