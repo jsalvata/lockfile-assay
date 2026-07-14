@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/jsalvata/lockfile-assay/compare/v1.0.1...v1.0.2) (2026-07-14)
+
+
+### Bug Fixes
+
+* pin the CLI version the action installs ([4a7a742](https://github.com/jsalvata/lockfile-assay/commit/4a7a742cca551c0d2fdf1fcfee247818e2a25ae9))
+
 ## [1.0.1](https://github.com/jsalvata/lockfile-assay/compare/v1.0.0...v1.0.1) (2026-07-14)
 
 
