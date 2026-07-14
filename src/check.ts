@@ -14,7 +14,7 @@ import {
   revParse,
   writeIndexTree,
 } from './git.js';
-import type { MemoProvenance, Mode, Outcome } from './outcome.js';
+import type { MemoProvenance, Outcome, ReportMode } from './outcome.js';
 import { exitCode } from './outcome.js';
 import { unsupportedInputs } from './preflight.js';
 import { deltaSummary } from './report/delta.js';
@@ -33,14 +33,14 @@ export type MemoHook = {
 
 export type CheckResult = {
   outcome: Outcome;
-  mode: Mode | 'unknown';
+  mode: ReportMode;
   exit: 0 | 1;
   report: ReportInput;
 };
 
 function result(
   outcome: Outcome,
-  mode: Mode,
+  mode: ReportMode,
   base: string | null,
   head: string,
   extra: Partial<ReportInput> = {},
@@ -75,8 +75,11 @@ export async function runCheck(opts: {
     catFile(head, 'pnpm-workspace.yaml', cwd),
     catFile(head, 'package.json', cwd),
   );
+  // 'unknown', not 'off': the fast path short-circuits before the config read
+  // (deliberately — spec §8 keeps it to one `git diff --name-only`, no config,
+  // no network), so no mode was determined. See ReportMode.
   if (!isTriggered(diffNames(base, head, cwd), declared))
-    return result({ kind: 'vacuous-pass' }, 'off', base, head);
+    return result({ kind: 'vacuous-pass' }, 'unknown', base, head);
 
   return evaluate({
     base,
@@ -119,7 +122,7 @@ export async function runStagedCheck(
       catFile('HEAD', 'package.json', cwd),
     );
     if (!isTriggered(staged, declared))
-      return result({ kind: 'vacuous-pass' }, 'off', base, 'INDEX');
+      return result({ kind: 'vacuous-pass' }, 'unknown', base, 'INDEX');
 
     const headTree = writeIndexTree(cwd);
     return await evaluate({

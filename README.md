@@ -67,14 +67,48 @@ them:
    **base** commit, so a PR cannot reconfigure the check that polices it — changing the
    mode requires a separately reviewed PR that lands first.
 
-3. Add a CI step on the protected branch:
+   > **Expect `mode: off` on the PR that adds this file — your config takes effect from
+   > the next PR.** Config is read from base, and the base of *this* PR has no config
+   > yet. Nothing is misconfigured; there is nothing to fix. You will also see
+   > `mode: unknown` on any PR that touches no resolution input — there the check
+   > short-circuits before reading config at all, so no mode was ever determined. That
+   > one is permanent, not a first-PR artifact.
 
-   ```sh
-   npx lockfile-assay check --base "$MERGE_BASE" --head HEAD
-   ```
+3. Add the anchored workflow: copy
+   [`examples/lockfile-assay.yml`](examples/lockfile-assay.yml) to
+   `.github/workflows/lockfile-assay.yml`. It is complete and copy-pasteable, and it
+   already carries the two things the check does not work without:
 
-The intended deployment is a **required status check** with `enforce`. See `docs/spec.md`
-§6 for the anchoring caveats.
+   - **`fetch-depth: 0`** on `actions/checkout` — the default shallow clone has no
+     merge-base for the check to derive from.
+   - **`node-version: 22`** — the CLI requires Node ≥ 22 and dies on the engine check
+     under Node 20.
+
+   Then follow [`docs/setup-github-app.md`](docs/setup-github-app.md) for the one-time
+   App setup, and pin the result as a **required status check**. Leave the mode on
+   `warn` until the mismatch rate is quiet, then move it to `enforce` — that is the
+   intended end state, and `warn` is a rollout stage rather than a resting posture
+   (`docs/spec.md` §9).
+
+   The workflow triggers on `pull_request_target` and posts its verdict as a dedicated
+   GitHub App's check run. Both are load-bearing rather than ceremony: together they are
+   what stops a PR from rewriting the gate that polices it. A check wired on a plain
+   `pull_request` trigger runs the PR's *own* copy of the workflow, so it can be edited
+   to always pass — which is why this repo ships no such example. `docs/spec.md` §6 is
+   the full argument.
+
+## Installing it
+
+Two contexts, one rule — **always run a pinned version**:
+
+| Where | How |
+|---|---|
+| CI | the pinned action: `uses: jsalvata/lockfile-assay@vX.Y.Z` (it installs its own pinned CLI — you do **not** add a dependency) |
+| Local hooks | a devDependency: `pnpm add -D lockfile-assay`, invoked as `pnpm exec lockfile-assay` |
+
+Do **not** invoke it as bare `npx lockfile-assay`: that resolves to whatever is `latest`
+on npm at the moment it runs. A tool whose whole job is proving your dependencies are
+pinned and untampered has no business running itself unpinned.
 
 ## Verdicts
 
@@ -86,6 +120,12 @@ The verdict depends on the outcome and the configured mode:
 | mismatch | not evaluated (exit 0) | exit 0, warning report | **exit 1**, failure report |
 | toolchain-skew | not evaluated (exit 0) | exit 0, warning report | **exit 1**, failure report |
 | unsupported-input | not evaluated (exit 0) | exit 0, warning report | **exit 1**, failure report |
+
+A PR that changes no resolution input never reaches that table at all: it is a **vacuous
+pass** (exit 0), settled by a single `git diff --name-only` before any config is read.
+Its report says `"mode": "unknown"` — which means *no mode was determined*, not `off`.
+The same applies to a local hook with no base to read config from. `unknown` is never a
+setting; the only settings are `off` | `warn` | `enforce`.
 
 Exit `2` is a malformed invocation (unresolvable refs, no pnpm pin, malformed base
 config); exit `3` is an internal error (resolver or network failure in CI). `--json`
@@ -114,9 +154,10 @@ version delta reads as drift; a `tarball:` URL or a novel edge reads as an attac
 The same check runs where the author still is: at commit time on the staged index, at
 push time on every pushed tip. Both are a courtesy preview of the required check — a
 broken local environment (no reachable registry, no derivable base) degrades to a
-notice and exit 0 instead of blocking. With
-[husky](https://typicode.github.io/husky/) (any hook manager works — these are
-plain git hooks):
+notice and exit 0 instead of blocking. Add the devDependency
+(`pnpm add -D lockfile-assay`), then wire the hooks — with
+[husky](https://typicode.github.io/husky/) below, though any hook manager works, as
+these are plain git hooks:
 
 ```sh
 # .husky/pre-commit

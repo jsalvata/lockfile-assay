@@ -1,6 +1,17 @@
 import { CannotEvaluate, UsageError } from './errors.js';
 
 export type Mode = 'off' | 'warn' | 'enforce';
+
+/**
+ * What a report may say about the mode. `'unknown'` is not a setting — it means
+ * the evaluation short-circuited BEFORE reading base config, so no mode was ever
+ * determined (a vacuous pass, or a degraded local form with no base to read).
+ * Reporting `'off'` there would be indistinguishable from a real `mode: "off"`
+ * config, which reads as "the assay is disabled in this repo" and has cost at
+ * least one adopter a long debugging detour.
+ */
+export type ReportMode = Mode | 'unknown';
+
 export type MemoProvenance = { hit: boolean; derivedAt?: string; toolVersion?: string };
 
 export type Outcome =
@@ -14,7 +25,9 @@ export type Outcome =
 
 const FAILING = new Set(['mismatch', 'toolchain-skew', 'unsupported-input']);
 
-export function exitCode(outcome: Outcome, mode: Mode): 0 | 1 {
+// Only `enforce` fails, so an undetermined mode ('unknown') exits 0 — it can
+// never have been read as `enforce`.
+export function exitCode(outcome: Outcome, mode: ReportMode): 0 | 1 {
   return mode === 'enforce' && FAILING.has(outcome.kind) ? 1 : 0;
 }
 

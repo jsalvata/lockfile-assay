@@ -268,6 +268,14 @@ and effective toolchain versions, memo provenance — the seam for CI annotation
 layers; `prepush --json` wraps per-tip reports in one `{schemaVersion, tips: []}`
 document.
 
+**The report's `mode` is not the config's `mode`.** Beyond the three settings it
+also carries `"unknown"`, meaning *no mode was determined* — the evaluation
+short-circuited before the config read (a vacuous pass; a local form with no base to
+read from). A consumer must not collapse `unknown` into `off`: `off` says the repo
+disabled the assay, `unknown` says the question never came up. Emitting `off` there
+instead — as the vacuous-pass path once did — reads to an adopter as "my config is
+being ignored", and cost the first one a long detour.
+
 Under `warn`, a mismatch never breaks the build; surfacing the warning (PR comment,
 check-run annotation) is the CI wiring's job, driven by the `--json` report.
 
