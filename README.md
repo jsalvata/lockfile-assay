@@ -161,3 +161,5 @@ prior art, and the roadmap.
 ## License
 
 MIT
+
+<!-- source-only touch: memo must HIT (no re-derive) -->
