@@ -47,7 +47,7 @@ jobs:
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-      - uses: jsalvata/lockfile-assay@v1.0.1   # pin to a published release; bump on upgrade
+      - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}
           head: ${{ github.event.pull_request.head.sha }}
