@@ -62,11 +62,12 @@ jobs:
       # rewritten on every release (scripts/set-release-version.sh, run during
       # semantic-release's `prepare`), which happens BEFORE the release commit
       # exists — so it cannot know its own future SHA. A SHA pin here would be
-      # unmaintainable by construction. The tag must instead be held immutable by
-      # a repository ruleset forbidding update/deletion of `v*` — server-enforced,
-      # the same class of fact the rest of the anchor rests on. And what actually
-      # EXECUTES is pinned a second time inside action.yml, which installs an
-      # exact CLI version from npm. See docs/RELEASING.md.
+      # unmaintainable by construction. The tag is instead held immutable by a
+      # repository ruleset on `v*` (update, deletion and non-fast-forward all
+      # restricted, no bypass actors) — server-enforced, the same class of fact
+      # the rest of the anchor rests on. And what actually EXECUTES is pinned a
+      # second time inside action.yml, which installs an exact CLI version from
+      # npm. See docs/RELEASING.md.
       - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}

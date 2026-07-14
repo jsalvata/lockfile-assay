@@ -332,12 +332,12 @@ one reverts to a tag, and Dependabot keeps the pins from freezing onto stale cod
 The one exception is the assay's own action, which cannot self-pin: its tag is
 rewritten during the release that creates it, before that commit's SHA exists
 (`docs/RELEASING.md`). Its integrity therefore rests on the tag being immutable,
-which requires a repository ruleset forbidding update/deletion of `v*` —
-server-enforced, like the rest. **That ruleset is a standing obligation on this
-repo, and is not yet configured** (`docs/RELEASING.md` says how); until it is, the
-first-party pin is a convention rather than a guarantee. The code the action
-*executes* is pinned a second time by the exact npm version inside `action.yml`,
-but that pin is only as trustworthy as the `action.yml` the tag resolves to.
+which a repository ruleset enforces — `refs/tags/v*`, update/deletion/non-fast-forward
+restricted, no bypass actors — making it server-enforced like the rest of the anchor.
+That ruleset is a standing obligation on this repo, not an optimisation: the code the
+action *executes* is pinned a second time by the exact npm version inside `action.yml`,
+but that second pin is only as trustworthy as the `action.yml` the tag resolves to.
+Weaken the ruleset and the npm pin silently stops meaning anything.
 
 **Prerequisites.** The job needs registry reachability and credentials for every scope
 the lockfile resolves (private registries included), and the pnpm version pinned by

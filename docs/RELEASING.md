@@ -28,24 +28,37 @@ release cannot bump it. **Bump that pin by hand (a normal PR) after a release**
 that you want the gate to run on. Forgetting is harmless-but-stale: the gate
 simply keeps running the previous release.
 
-## ⚠️ REQUIRED, NOT YET CONFIGURED: a `v*` tag ruleset
+## The `v*` tag ruleset is load-bearing — do not weaken it
 
 The pin above only holds if the **tag** is honest. `uses: jsalvata/lockfile-assay@v1.0.2`
-resolves a git tag, and a tag is *mutable*: move it, and an adopter's workflow
-fetches a different `action.yml` — one free to install any CLI it likes, or to
-skip the CLI and exfiltrate the App token directly. The exact-version pin inside
-`action.yml` is then worth nothing, because it is the attacker's `action.yml`.
+resolves a git tag, and a tag is *mutable by default*: move it, and an adopter's
+workflow fetches a different `action.yml` — one free to install any CLI it likes,
+or to skip the CLI and exfiltrate the App token directly. The exact-version pin
+inside `action.yml` would then be worth nothing, because it is the attacker's
+`action.yml`.
 
-So the npm pin does not stand on its own. It rests on the tag being immutable —
-and **as of this writing the repository has only a `main` branch ruleset, with no
-tag protection at all**, so today it isn't. Adopters cannot check this for
-themselves: they pin a tag and trust us to keep it still. Treat it as part of the
-product, not repo hygiene.
+So the npm pin does not stand on its own. It rests on the tag being immutable,
+which is enforced by the **`immutable release tags`** ruleset on this repo:
+target `refs/tags/v*`, enforcement `active`, restricting **update**, **deletion**
+and **non-fast-forward**, with an **empty bypass list**. Adopters cannot check
+this for themselves — they pin a tag and trust us to hold it still — so treat it
+as part of the product, not repo hygiene.
 
-**To configure** (Settings → Rules → Rulesets → New ruleset): target `Tag`, pattern
-`v*`, enforcement `Active`, with **Restrict updates** and **Restrict deletions**
-enabled. Until that exists, `uses: jsalvata/lockfile-assay@vX.Y.Z` is a convention
-rather than a guarantee.
+Three properties of that ruleset are load-bearing, and each fails quietly if
+changed:
+
+- **Creation is deliberately NOT restricted.** semantic-release must create a new
+  `v*` tag on every release; restricting creation breaks the pipeline outright.
+  Tags are write-once: freely created, never moved.
+- **The bypass list must stay empty.** The threat model explicitly includes a
+  compromised maintainer account, so an admin bypass would hand an attacker the
+  exact capability the ruleset removes.
+- **Enforcement must be `active`, not `evaluate`.** An `evaluate` ruleset looks
+  identical in the UI and enforces nothing.
+
+The consequence, accepted knowingly: releases are **append-only**. A bad `v1.0.3`
+cannot be quietly retagged — cut `v1.0.4`. That is the same trade we ask adopters
+to accept when they pin us.
 
 Third-party actions have no such constraint (nothing rewrites them at release
 time), so they are pinned by **commit SHA** instead, which needs no ruleset to be
