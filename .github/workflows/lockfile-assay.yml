@@ -26,6 +26,16 @@
 # ambient env can't override the staged `.npmrc` (spec §6). Supply private
 # registry auth via the runner's ~/.npmrc FILE, not `npm_config_*` env vars —
 # add a step that writes ~/.npmrc before the check runs.
+#
+# THIRD-PARTY ACTIONS ARE PINNED BY COMMIT SHA, NOT BY TAG. A git tag is
+# mutable: whoever can push tags in the action's repo can repoint `v4` at new
+# code, which this job would then run WITH THE APP'S CREDENTIALS. That is not
+# hypothetical here — `create-github-app-token` MINTS the token whose identity
+# the whole anchor rests on (spec §6: "only the creating App can update its
+# runs"). Mint that token and you ARE the creating App, and assay verdicts
+# become forgeable. A SHA is the content hash of a commit and cannot be moved.
+# The trailing `# vX.Y.Z` comment is what Dependabot reads to offer bumps —
+# keep it in sync with the SHA. Guarded by src/workflow-pins.test.ts.
 name: lockfile-assay
 on:
   pull_request_target:
@@ -34,19 +44,29 @@ jobs:
     runs-on: ubuntu-latest
     environment: lockfile-assay
     steps:
-      - uses: actions/checkout@v4        # base branch — never the PR head
+      # base branch — never the PR head
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
       - name: fetch head as git data
         run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         id: app-token
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+      # The one ref that is a TAG, not a SHA — deliberately. This line is
+      # rewritten on every release (scripts/set-release-version.sh, run during
+      # semantic-release's `prepare`), which happens BEFORE the release commit
+      # exists — so it cannot know its own future SHA. A SHA pin here would be
+      # unmaintainable by construction. The tag must instead be held immutable by
+      # a repository ruleset forbidding update/deletion of `v*` — server-enforced,
+      # the same class of fact the rest of the anchor rests on. And what actually
+      # EXECUTES is pinned a second time inside action.yml, which installs an
+      # exact CLI version from npm. See docs/RELEASING.md.
       - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}
