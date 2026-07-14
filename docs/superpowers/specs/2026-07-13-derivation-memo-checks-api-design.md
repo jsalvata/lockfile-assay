@@ -62,8 +62,9 @@ Two decisions taken at design time, beyond the minimal "memo backend":
 - CLI/action contract additions: `--pr <number>`, `LOCKFILE_ASSAY_APP_ID` env.
 - Tests: `store.test.ts` (unit, faked `Backend`), `test/integration/memo.test.ts`
   (adapter + real transport against a faked Checks-API HTTP server), an
-  extension to `import-graph.test.ts` (`memo/ ↛ report/`), `checks-api` embed/
-  parse unit coverage, and an `auth.test.ts` extension for the app-id reader.
+  extension to `import-graph.test.ts` (`memo/ ↛ report/`), the record marker's
+  embed/parse exercised indirectly through `consult`/`postVerdict` (both are
+  private to `store.ts`), and an `auth.test.ts` extension for the app-id reader.
 
 ## 2. Layered architecture
 
@@ -81,9 +82,10 @@ cli.ts ── postVerdict ─┤→  store.ts (adapter: trust boundary + verdict
 - **Transport (`checks-api.ts`).** Design-independent HTTP against the GitHub
   Checks, Pulls, and GraphQL APIs. Knows nothing about trust: it lists a PR's
   current commits (REST) and its force-pushed-away heads (GraphQL timeline),
-  lists a commit's check runs filtered to an app id + check name (REST), creates
-  a check run, and embeds/parses the record JSON in a run's output. `Backend` is
-  the interface it satisfies.
+  lists each commit's check runs (REST — passing the `app_id`/`check_name`
+  query params for efficiency, but returning them raw and unfiltered), and
+  creates a check run. It never parses or embeds a record — it moves opaque
+  `summary` strings. `Backend` is the interface it satisfies.
 - **Adapter (`store.ts`).** Owns the design-independent trust boundary: filter
   runs to `conclusion === 'success'` and the configured App id, parse the
   record, compute `inputsHash`, compare a record's `derivedHash` to
@@ -356,9 +358,10 @@ memo is a null-object and they derive live. No PR auto-discovery in v1.
 - epoch isolation;
 - duplicate records from concurrent runs read as equivalent.
 
-**Guard + helpers:** `import-graph.test.ts` extended (`memo/ ↛ report/`);
-`checks-api` embed/parse round-trip + malformed-input unit test; `auth.test.ts`
-extended for the app-id reader.
+**Guard + helpers:** `import-graph.test.ts` extended (`memo/ ↛ report/`); the
+record marker's embed/parse round-trip + malformed-input cases exercised
+indirectly through the adapter's `consult`/`postVerdict` (they are private to
+`store.ts`); `auth.test.ts` extended for the app-id reader.
 
 Keep green throughout: `pnpm lint && pnpm typecheck && pnpm build &&
 pnpm test:unit`, plus `pnpm test:integration`.
@@ -379,14 +382,14 @@ on a scratch repo, and findings captured in a spike doc. Prove:
 6. **Exact list-endpoint shape**: does `GET …/commits/{sha}/check-runs` return
    `output.summary` (and `output.text`) in the list, or is a per-run `GET`
    needed? Confirm the `app_id` + `check_name` query filters behave as assumed.
-   (Adjust the transport's `listRecords` if a per-run GET turns out necessary —
+   (Adjust the transport's `listRuns` if a per-run GET turns out necessary —
    the `Backend` interface is unaffected.)
 7. **Force-push discovery**: that `HeadRefForcePushedEvent.beforeCommit.oid` is
    available via GraphQL; that a check run on an orphaned (force-pushed-away,
    not-yet-GC'd) commit stays listable by SHA; and roughly how fast GitHub GCs
    such commits (bounds the survival window). If GraphQL proves unworkable,
    fall back to an alternate head-SHA source (e.g. Actions run associations) —
-   `listRecords` changes, the `Backend` interface does not.
+   `listRuns` changes, the `Backend` interface does not.
 
 The code is fully developable and unit/integration-testable against the faked
 Checks API without any live infra; the spike validates the infra chain, which is
