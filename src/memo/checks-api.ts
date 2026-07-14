@@ -56,10 +56,10 @@ type Ctor = {
 
 export class ChecksApiBackend implements Backend {
   private readonly api: string;
-  private readonly f: typeof fetch;
+  private readonly fetch: typeof fetch;
   constructor(private readonly o: Ctor) {
     this.api = o.apiBase ?? DEFAULT_API;
-    this.f = o.fetchImpl ?? fetch;
+    this.fetch = o.fetchImpl ?? fetch;
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
@@ -84,7 +84,7 @@ export class ChecksApiBackend implements Backend {
       const url =
         `${this.api}/repos/${this.o.owner}/${this.o.repo}/commits/${sha}/check-runs` +
         `?app_id=${this.o.appId}&check_name=${encodeURIComponent(this.o.checkName)}&per_page=100`;
-      const res = await this.f(url, { headers: this.headers() });
+      const res = await this.fetch(url, { headers: this.headers() });
       if (!res.ok) continue; // a GC'd / unreadable SHA → skip (safe miss)
       const body = (await res.json()) as { check_runs?: CheckRun[] };
       for (const run of body.check_runs ?? []) {
@@ -109,7 +109,7 @@ export class ChecksApiBackend implements Backend {
     const shas = new Set<string>();
     for (let page = 1; page < 50; page++) {
       const url = `${this.api}/repos/${this.o.owner}/${this.o.repo}/pulls/${pr}/commits?per_page=100&page=${page}`;
-      const res = await this.f(url, { headers: this.headers() });
+      const res = await this.fetch(url, { headers: this.headers() });
       if (!res.ok) break;
       const arr = (await res.json()) as { sha: string }[];
       for (const c of arr) shas.add(c.sha);
@@ -124,7 +124,7 @@ export class ChecksApiBackend implements Backend {
       'query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo)' +
       '{pullRequest(number:$pr){timelineItems(itemTypes:[HEAD_REF_FORCE_PUSHED_EVENT],first:100)' +
       '{nodes{... on HeadRefForcePushedEvent{beforeCommit{oid} afterCommit{oid}}}}}}}';
-    const res = await this.f(`${this.api}/graphql`, {
+    const res = await this.fetch(`${this.api}/graphql`, {
       method: 'POST',
       headers: this.headers({ 'content-type': 'application/json' }),
       body: JSON.stringify({ query, variables: { owner: this.o.owner, repo: this.o.repo, pr } }),
@@ -147,7 +147,7 @@ export class ChecksApiBackend implements Backend {
     summary: string;
   }): Promise<void> {
     const url = `${this.api}/repos/${this.o.owner}/${this.o.repo}/check-runs`;
-    const res = await this.f(url, {
+    const res = await this.fetch(url, {
       method: 'POST',
       headers: this.headers({ 'content-type': 'application/json' }),
       body: JSON.stringify({
