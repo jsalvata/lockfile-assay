@@ -45,7 +45,20 @@ runs:
         LOCKFILE_ASSAY_TOKEN: ${{ inputs.app-token }}
         LOCKFILE_ASSAY_APP_ID: ${{ inputs.app-id }}
       run: |
-        npx --yes lockfile-assay check \
+        set -euo pipefail
+        # PIN — do not unpin. scripts/set-release-version.sh rewrites this line on
+        # every release, so `uses: jsalvata/lockfile-assay@vX.Y.Z` runs EXACTLY
+        # lockfile-assay@X.Y.Z. Installing the package WITHOUT a version (as this
+        # action originally did) resolves to whatever is `latest` on npm — so
+        # pinning the action tag would NOT pin the code that executes, the exact
+        # opposite of what this tool exists for. Guarded by src/action-yml.test.ts.
+        VERSION="1.0.1" # x-release-version
+        # Install globally and invoke via PATH, not via npx: when the assay runs on
+        # its OWN repo (dogfooding), npx resolves the bare package name against the
+        # local package (bin -> dist/cli.js, unbuilt in a fresh checkout) and dies
+        # with exit 127. A global bin on PATH has no such collision.
+        npm install -g "lockfile-assay@${VERSION}" >/dev/null
+        lockfile-assay check \
           --base "${{ inputs.base }}" --head "${{ inputs.head }}" \
           --pr "${{ inputs.pr }}" \
           --memo-write --json
