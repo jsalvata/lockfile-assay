@@ -1,0 +1,87 @@
+# The PRIVILEGED reviewer caller (waiver-stamp docs/auto-approval-setup.md step 2).
+#
+# === SECURITY-CRITICAL FILE — review every edit with care. ===================
+# This workflow holds a pull-requests: write token — the credential that removes
+# human review by posting an APPROVE. Its integrity is the whole system's
+# integrity, so this file reproduces the upstream security-reviewed shape.
+# **Read this comment block before editing anything beyond the marked EDIT
+# points.** Upstream template:
+# https://github.com/jsalvata/waiver-stamp/blob/main/examples/waiver-stamp-review.yml
+# =============================================================================
+#
+# WHY THIS SHAPE (the pwn-request defense):
+#
+#   1. `uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@<SHA>` is
+#      pinned to a full commit SHA of an EXTERNAL repo. That makes the action's
+#      code trusted — a PR against this repo cannot alter what this job runs, no
+#      matter what it changes in its own branch.
+#   2. The checkout below targets this repo's default branch — never the PR head.
+#      `persist-credentials: false` means even that checkout can't leak a
+#      push-capable credential.
+#   3. The PR head commit is brought in with a separate `git fetch`, purely as
+#      DATA (objects in the git store) — never checked out, never executed. The
+#      reviewer action reads those commits via git plumbing to run its trust
+#      guards (G1: no `.github/**` edit anywhere in the range; G2: any
+#      manifest/lockfile change is an honest, allowlisted, up-moving semver
+#      bump) — all git DATA reads, zero code execution from the PR.
+#
+#   Together: the only code this job executes is (a) the pinned external action
+#   and (b) this repo's own default-branch history. Getting this backwards —
+#   e.g. checking out `head_sha` instead of the default branch — reintroduces
+#   the "pwn request" vulnerability class: a PR author's code running with a
+#   write token that can approve their own PR.
+#
+# This is the same discipline .github/workflows/lockfile-assay.yml applies to
+# its own gate: check out base, fetch head as inert data, never execute it.
+
+name: waiver-stamp-review
+
+on:
+  workflow_run:
+    workflows: [CI]  # must match the `name:` at the top of .github/workflows/ci.yml
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  checks: read
+  contents: read
+  actions: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: waiver-stamp-review-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      # SECURITY (pwn-request): this job has a write token. It must run the
+      # TRUSTED default-branch code, NEVER anything derived from the PR head.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the PR head commits (data for G1/G2 — never executed)
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: git fetch --no-tags --force origin "$HEAD_SHA"
+
+      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@58d9247fcde0ff0b17e30b05959d7d9b3b85974d  # v1.11.1
+        with:
+          # Our required check-runs from the CI workflow that must be green on the
+          # head SHA. "waiver-stamp" itself is deliberately NOT listed — its verdict
+          # IS the artifact this action already trusts.
+          ci-checks: |
+            test
+            integration (9.12.0)
+            integration (10.34.1)
+            dogfood
+          # Empty on purpose: this repo's own lockfile-honesty gate (the `assay` job
+          # in lockfile-assay.yml) is not currently operational — the GitHub App that
+          # posts its verdict check is not installed, so `assay` reports failure and
+          # no App-identity check exists to require. Until that gate is restored,
+          # waiver-stamp APPROVEs will carry the "assumes the lockfile is honest"
+          # warning. Once the App gate posts a green required check, list its
+          # check-run name here.
+          lockfile-honesty-checks: ''

@@ -66,6 +66,24 @@ jobs:
       - run: pnpm build
       - name: assay this PR with the code under review
         run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD --json
+  # waiver-stamp: the unprivileged producer (docs/auto-approval-setup.md step 1).
+  # It computes the waiver verdict over the PR's commit range and publishes it as
+  # the "waiver-stamp" check plus a report artifact. The privileged reviewer that
+  # consumes that artifact is .github/workflows/waiver-stamp-review.yml — this job
+  # never holds a write token, so it is no more trusted than any other PR CI job.
+  waiver-stamp:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # required: waiver-stamp walks the full base..head commit range
+          persist-credentials: false
+      - name: waiver-stamp
+        uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp@58d9247fcde0ff0b17e30b05959d7d9b3b85974d  # v1.11.1
+        with:
+          waiver-version: 1.11.1  # pinned so verdicts don't shift under a new tool release
+
   # Release runs only AFTER test + integration pass, and only on a push to main
   # — never in parallel with the tests. Publishing to npm uses OIDC trusted
   # publishing (no NPM_TOKEN); configure the trusted publisher for this package

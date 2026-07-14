@@ -1,0 +1,6 @@
+{
+  "changeDocs": {
+    "allow": ["docs/**", "**/README.md", "CHANGELOG.md"],
+    "deny": [".claude/**", "**/CLAUDE.md", "**/AGENTS.md", ".cursor/**"]
+  }
+}
