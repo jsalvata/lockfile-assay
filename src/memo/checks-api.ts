@@ -1,4 +1,4 @@
-import type { Backend } from './store.js';
+import type { Backend, CheckRunView, VerdictPost } from './store.js';
 
 const DEFAULT_API = 'https://api.github.com';
 
@@ -34,10 +34,10 @@ export class ChecksApiBackend implements Backend {
   /** Raw check-run views for the PR's candidate head SHAs — no filtering, no
    * parsing. The adapter (store.ts) owns the success/app-id trust filter and
    * the record parse; this transport only moves opaque `summary` strings. */
-  async listRuns(): Promise<Array<{ appId?: number; conclusion: string; summary: string }>> {
+  async listRuns(): Promise<CheckRunView[]> {
     if (this.o.pr === undefined) return []; // no PR context → nothing to consult
     const shas = await this.candidateShas(this.o.pr);
-    const runs: Array<{ appId?: number; conclusion: string; summary: string }> = [];
+    const runs: CheckRunView[] = [];
     for (const sha of shas) {
       // No page loop here (unlike candidateShas below): a single SHA/app/check-name
       // combination realistically has far fewer than 100 runs, so per_page=100 is
@@ -97,12 +97,7 @@ export class ChecksApiBackend implements Backend {
     return out;
   }
 
-  async postVerdict(v: {
-    headSha: string;
-    conclusion: 'success' | 'failure' | 'neutral';
-    title: string;
-    summary: string;
-  }): Promise<void> {
+  async postVerdict(v: VerdictPost): Promise<void> {
     const url = `${this.api}/repos/${this.o.owner}/${this.o.repo}/check-runs`;
     const res = await this.fetch(url, {
       method: 'POST',

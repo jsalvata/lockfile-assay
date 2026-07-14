@@ -17,6 +17,21 @@ export type StoredRecord = {
   timestamp: string; // ISO-8601
 };
 
+/** A check-run conclusion as posted/read through the Checks API. */
+export type Conclusion = 'success' | 'failure' | 'neutral';
+
+/** A raw check-run view returned by `Backend.listRuns` — no filtering, no
+ * parsing, just the fields the adapter's trust filter and record parse need. */
+export type CheckRunView = { appId?: number; conclusion: string; summary: string };
+
+/** The verdict `Backend.postVerdict` posts as a new check run. */
+export type VerdictPost = {
+  headSha: string;
+  conclusion: Conclusion;
+  title: string;
+  summary: string;
+};
+
 const MARKER = 'lockfile-assay-memo:v1';
 
 /** Embed a record inside a check-run summary, behind an HTML-comment marker so
@@ -71,7 +86,7 @@ export function sha256(buf: Buffer): string {
  * — is `neutral` (visible, non-blocking). `neutral`/`success` both satisfy a
  * required check; `failure` blocks.
  */
-export function conclusion(outcome: Outcome, exit: 0 | 1): 'success' | 'failure' | 'neutral' {
+export function conclusion(outcome: Outcome, exit: 0 | 1): Conclusion {
   if (exit === 1) return 'failure';
   if (outcome.kind === 'pass' || outcome.kind === 'vacuous-pass') return 'success';
   return 'neutral';
@@ -103,13 +118,8 @@ export interface Backend {
   // chain + force-pushed-away heads). No filtering, no parsing — the adapter
   // owns both (the trust boundary lives here, not in the transport). Throws
   // on transport error; the adapter maps it to a miss.
-  listRuns(): Promise<Array<{ appId?: number; conclusion: string; summary: string }>>;
-  postVerdict(v: {
-    headSha: string;
-    conclusion: 'success' | 'failure' | 'neutral';
-    title: string;
-    summary: string;
-  }): Promise<void>;
+  listRuns(): Promise<CheckRunView[]>;
+  postVerdict(v: VerdictPost): Promise<void>;
 }
 
 export class MemoDriver implements MemoHook {
