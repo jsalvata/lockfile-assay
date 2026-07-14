@@ -66,27 +66,44 @@ honoring `.pnpmfile.cjs` would force this argument to be rebuilt.
 
 ## Migration status (this repo)
 
-The design above is adopted in the docs; the implementation does not exist yet,
-so **dogfooding is removed until it does** — the interim branch-store deployment
-would have shipped a design we've already superseded, and running the assay on
-itself with no anchored backend is worse than not running it. Removed: the local
-hooks' assay invocation, `.github/workflows/assay.yml`, the `ci.yml` dogfood
-step, and `.lockfile-assay.json`; the GitHub-side App / environment / secrets /
-memo branch / ruleset are torn down too. The reference artifacts consumers use
-(`examples/lockfile-assay.yml`, `action.yml`, the setup doc) stay — they describe the
-anchored form, not this repo's deployment.
+**Re-adopted (2026-07-14).** The Checks-API backend landed (#7) and ships in
+`lockfile-assay@v1.0.1`; the validation spike then proved the anchored chain on
+live GitHub — environment gating, check-run immutability, App-identity, memo
+write / consult-hit / force-push survival (`spike-checks-api-memo.md`). So
+dogfooding is back on, installed by running the **published**
+`setup-github-app.md` from a clean slate — which also validates those
+instructions end to end:
 
-Re-adoption, once the backend lands, runs the **published**
-`setup-github-app.md` from a clean slate (which also validates those
-instructions end to end):
+- **The gate:** `.github/workflows/lockfile-assay.yml` — a *verbatim* copy of
+  `examples/lockfile-assay.yml`: `pull_request_target`, base checkout, head
+  fetched as git data only, App token minted from a `main`-restricted
+  environment, running the **pinned published** assay. It posts the verdict as
+  the App's check run and writes the memo. Branch protection requires that check
+  *from the App's identity*.
+- **Head's own CLI:** exercised separately by the token-less `dogfood` job in
+  `ci.yml` — the code under review assaying its own lockfile. A `pull_request`
+  job holds no App credentials, so the memo is disabled and it always derives
+  live. It is deliberately **not** the gate. (`pnpm exec lockfile-assay` does not
+  work here — pnpm does not self-link a package's own bin — so it runs the built
+  CLI directly.)
+- **Local forms (drift prevention, §8):** `.husky/pre-commit` runs
+  `check --staged` and `.husky/pre-push` runs `prepush`, so a mismatch surfaces
+  on the author's machine seconds after their resolve. That is what keeps an
+  `enforce` gate liveable — the §7 registry-drift residual is largest between
+  authoring and CI, and these close it. They invoke head's CLI via `pnpm dev`
+  (`pnpm exec lockfile-assay` does not work in this repo — pnpm will not
+  self-link a package's own bin). Escape hatch: git's `--no-verify`; a broken
+  local env degrades to a notice, never a bricked commit.
+- **Mode:** `enforce` (`.lockfile-assay.json`) from day one, skipping the §9
+  `warn` stage deliberately: the spike proved the anchored chain end to end, and
+  a real honest lockfile change on this repo derives and byte-matches, so there
+  is no warn-stage evidence left to gather. The local forms above carry the
+  drift risk that `warn` would otherwise have absorbed.
 
-- **CLI first:** `memo/store.ts` targets the Contents API; it needs the Checks
-  API backend (post the verdict check run, embed/consult records). The §13
-  backend interface was built for this swap.
-- **Then dogfood** the anchored form: a fresh Checks-R/W App, a
-  deployment-branch-restricted environment, a `pull_request_target` gate running
-  the *pinned published* assay, and head's CLI exercised separately in a
-  token-less `pull_request` job.
+The earlier interim branch-store deployment — the local hooks' assay invocation,
+`.github/workflows/assay.yml`, the old `ci.yml` dogfood step, and its GitHub-side
+App / environment / secrets / memo branch / ruleset — was torn down first;
+nothing from it survives.
 
 ## Rejected alternatives
 
