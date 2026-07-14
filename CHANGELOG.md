@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/jsalvata/lockfile-assay/compare/v1.0.0...v1.0.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* remove github context from action.yml ([8e79abb](https://github.com/jsalvata/lockfile-assay/commit/8e79abb14fabcddcf4575d339bdcb9d98de20685))
+
 # 1.0.0 (2026-07-14)
 
 
