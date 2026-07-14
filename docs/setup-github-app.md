@@ -79,6 +79,14 @@ packaged composite action ([`action.yml`](../action.yml)) — so a CLI-flag
 change only touches `action.yml`, and adopters using the reference workflow
 get it for free.
 
+**Pin the action to a release tag — and know what that buys you.** The example
+pins `uses: jsalvata/lockfile-assay@vX.Y.Z`, and that pin is *load-bearing*: the
+action installs **exactly `lockfile-assay@X.Y.Z`**, the CLI version matching its
+own tag. So pinning the action pins the code that actually runs — you are never
+silently upgraded to a newer (or compromised) `latest` between runs. Upgrading is
+an explicit, reviewable edit to that one line. (Requires **v1.0.2 or later**;
+earlier action tags installed the CLI unpinned. `@v1.0.0` does not load at all.)
+
 **Security discipline — read before editing this workflow.**
 `pull_request_target` runs with secrets while the PR controls the repository
 content under test. The assay treats that content as **inert data** (spec §3:

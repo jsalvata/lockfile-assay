@@ -9,6 +9,25 @@ The `release` job lives in `.github/workflows/ci.yml` and is gated on
 `needs: [test, integration]`, so a release can never publish while tests are
 failing (the two used to race as separate `push: main` workflows).
 
+## The version pins semantic-release rewrites (and the one it can't)
+
+`scripts/set-release-version.sh` runs in the release's `prepare` step and pins
+the new version into the two artifacts that must name it exactly:
+
+- **`action.yml`** — the CLI version the composite action installs. This is what
+  makes `uses: jsalvata/lockfile-assay@vX.Y.Z` actually pin the *code that runs*
+  (before v1.0.2 it installed the CLI unpinned, i.e. `latest`, so the tag pinned
+  nothing). `src/action-yml.test.ts` fails the build if it is ever unpinned.
+- **`examples/lockfile-assay.yml`** — the action tag the reference workflow pins,
+  so the copy-paste example never goes stale.
+
+**The one it cannot touch: `.github/workflows/lockfile-assay.yml`** — this repo's
+own dogfood gate, which also pins the action. A GitHub Actions `GITHUB_TOKEN` is
+forbidden from pushing changes to files under `.github/workflows/`, so the
+release cannot bump it. **Bump that pin by hand (a normal PR) after a release**
+that you want the gate to run on. Forgetting is harmless-but-stale: the gate
+simply keeps running the previous release.
+
 ## npm publishing — OIDC trusted publishing (no `NPM_TOKEN`)
 
 Publishing is **tokenless**: the `release` job has `id-token: write` and npm's
