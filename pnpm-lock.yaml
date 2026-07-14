@@ -39,6 +39,9 @@ importers:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      is-number:
+        specifier: 7.0.0
+        version: 7.0.0
       semantic-release:
         specifier: ^25.0.5
         version: 25.0.5(typescript@6.0.3)
