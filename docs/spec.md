@@ -316,6 +316,29 @@ preserve that property: check out the base, read head content as git data only,
 invoke a pinned published assay, and execute nothing from the head tree.
 `docs/setup-github-app.md` walks the setup.
 
+**The workflow's own supply chain.** The anchor's facts are server-enforced, but the
+*steps* that carry them are not: a workflow is a list of third-party actions, and
+`uses: foo@v4` names a **git tag**, which is mutable. Whoever can move that tag
+substitutes new code into a job that already holds the credentials — and in this
+workflow one of those actions (`create-github-app-token`) *mints the App token whose
+identity the whole argument above rests on*. "Only the creating App can update its
+runs" stays true; it simply stops being a constraint on an attacker who can mint that
+App's token, and forged verdicts follow. This is the same trust the assay refuses to
+extend to a lockfile — a range is not a pin — so the workflow must not extend it
+either. Every third-party action is therefore pinned by **commit SHA**, which is a
+content hash and cannot be repointed; `src/workflow-pins.test.ts` fails the build if
+one reverts to a tag, and Dependabot keeps the pins from freezing onto stale code.
+
+The one exception is the assay's own action, which cannot self-pin: its tag is
+rewritten during the release that creates it, before that commit's SHA exists
+(`docs/RELEASING.md`). Its integrity therefore rests on the tag being immutable,
+which requires a repository ruleset forbidding update/deletion of `v*` —
+server-enforced, like the rest. **That ruleset is a standing obligation on this
+repo, and is not yet configured** (`docs/RELEASING.md` says how); until it is, the
+first-party pin is a convention rather than a guarantee. The code the action
+*executes* is pinned a second time by the exact npm version inside `action.yml`,
+but that pin is only as trustworthy as the `action.yml` the tag resolves to.
+
 **Prerequisites.** The job needs registry reachability and credentials for every scope
 the lockfile resolves (private registries included), and the pnpm version pinned by
 `packageManager` (corepack or pnpm ≥ 10 provide this from the pin itself).

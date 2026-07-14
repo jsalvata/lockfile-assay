@@ -15,7 +15,7 @@ failing (the two used to race as separate `push: main` workflows).
 the new version into the two artifacts that must name it exactly:
 
 - **`action.yml`** — the CLI version the composite action installs. This is what
-  makes `uses: jsalvata/lockfile-assay@vX.Y.Z` actually pin the *code that runs*
+  makes `uses: jsalvata/lockfile-assay@vX.Y.Z` pin the *code that runs*
   (before v1.0.2 it installed the CLI unpinned, i.e. `latest`, so the tag pinned
   nothing). `src/action-yml.test.ts` fails the build if it is ever unpinned.
 - **`examples/lockfile-assay.yml`** — the action tag the reference workflow pins,
@@ -27,6 +27,30 @@ forbidden from pushing changes to files under `.github/workflows/`, so the
 release cannot bump it. **Bump that pin by hand (a normal PR) after a release**
 that you want the gate to run on. Forgetting is harmless-but-stale: the gate
 simply keeps running the previous release.
+
+## ⚠️ REQUIRED, NOT YET CONFIGURED: a `v*` tag ruleset
+
+The pin above only holds if the **tag** is honest. `uses: jsalvata/lockfile-assay@v1.0.2`
+resolves a git tag, and a tag is *mutable*: move it, and an adopter's workflow
+fetches a different `action.yml` — one free to install any CLI it likes, or to
+skip the CLI and exfiltrate the App token directly. The exact-version pin inside
+`action.yml` is then worth nothing, because it is the attacker's `action.yml`.
+
+So the npm pin does not stand on its own. It rests on the tag being immutable —
+and **as of this writing the repository has only a `main` branch ruleset, with no
+tag protection at all**, so today it isn't. Adopters cannot check this for
+themselves: they pin a tag and trust us to keep it still. Treat it as part of the
+product, not repo hygiene.
+
+**To configure** (Settings → Rules → Rulesets → New ruleset): target `Tag`, pattern
+`v*`, enforcement `Active`, with **Restrict updates** and **Restrict deletions**
+enabled. Until that exists, `uses: jsalvata/lockfile-assay@vX.Y.Z` is a convention
+rather than a guarantee.
+
+Third-party actions have no such constraint (nothing rewrites them at release
+time), so they are pinned by **commit SHA** instead, which needs no ruleset to be
+immutable. `src/workflow-pins.test.ts` fails the build if one reverts to a tag,
+and `.github/dependabot.yml` keeps the SHAs from freezing onto stale code.
 
 ## npm publishing — OIDC trusted publishing (no `NPM_TOKEN`)
 
