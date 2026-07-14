@@ -13,14 +13,19 @@ description: >-
   workflow — see docs/setup-github-app.md.
 inputs:
   base:
-    description: Base ref (the PR merge-base), e.g. `origin/${{ github.base_ref }}`.
+    # NB: keep the github context OUT of these descriptions. GitHub evaluates
+    # placeholder expressions when the action LOADS, where that context is
+    # unavailable, so one here breaks every `uses:` of this action (a
+    # regression test guards it). The exact workflow expressions live in the
+    # caller: examples/lockfile-assay.yml.
+    description: Base ref (the PR merge-base), e.g. the origin merge-base; see examples/lockfile-assay.yml.
     required: true
   head:
-    description: Head ref to check — the PR head SHA, e.g. `${{ github.event.pull_request.head.sha }}`.
+    description: Head ref to check — the PR head SHA; see examples/lockfile-assay.yml.
     required: false
     default: HEAD
   pr:
-    description: PR number, for memo consult, e.g. `${{ github.event.pull_request.number }}`.
+    description: PR number, for the memo consult; see examples/lockfile-assay.yml.
     required: true
   app-id:
     description: The dedicated App's id, for the consult identity filter.
