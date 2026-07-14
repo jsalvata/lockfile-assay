@@ -40,6 +40,32 @@ jobs:
       - run: pnpm test:integration
         env:
           PNPM_FIXTURE_VERSION: ${{ matrix.pnpm-fixture }}
+  # Dogfood: assay THIS PR's lockfile with THIS PR's own code — the code under
+  # review checking itself. Deliberately token-less: a `pull_request` job holds
+  # no App credentials, so the memo is disabled and this always derives live. It
+  # is NOT the gate; the anchored gate (published assay + memo, App-posted
+  # verdict) is .github/workflows/lockfile-assay.yml on pull_request_target.
+  # NB `pnpm exec lockfile-assay` does not work in this repo — pnpm does not
+  # self-link a package's own bin — so run the built CLI directly.
+  dogfood:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: fetch the base branch so --base resolves
+        run: git fetch origin "${{ github.base_ref }}"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: assay this PR with the code under review
+        run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD --json
   # Release runs only AFTER test + integration pass, and only on a push to main
   # — never in parallel with the tests. Publishing to npm uses OIDC trusted
   # publishing (no NPM_TOKEN); configure the trusted publisher for this package
