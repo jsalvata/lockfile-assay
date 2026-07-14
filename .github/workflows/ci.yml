@@ -40,3 +40,34 @@ jobs:
       - run: pnpm test:integration
         env:
           PNPM_FIXTURE_VERSION: ${{ matrix.pnpm-fixture }}
+  # Release runs only AFTER test + integration pass, and only on a push to main
+  # — never in parallel with the tests. Publishing to npm uses OIDC trusted
+  # publishing (no NPM_TOKEN); configure the trusted publisher for this package
+  # on npmjs.com pointing at this workflow file (see docs/RELEASING.md).
+  release:
+    needs: [test, integration]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Release
+        run: pnpm exec semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

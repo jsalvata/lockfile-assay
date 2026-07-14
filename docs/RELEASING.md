@@ -5,6 +5,32 @@ version from the Conventional Commits since the last tag, updates the changelog,
 tags, and publishes to npm. There is nothing to do by hand for a normal release
 — merge to `main` and the pipeline ships it.
 
+The `release` job lives in `.github/workflows/ci.yml` and is gated on
+`needs: [test, integration]`, so a release can never publish while tests are
+failing (the two used to race as separate `push: main` workflows).
+
+## npm publishing — OIDC trusted publishing (no `NPM_TOKEN`)
+
+Publishing is **tokenless**: the `release` job has `id-token: write` and npm's
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) exchanges the
+workflow's OIDC identity for a short-lived publish credential — there is no
+`NPM_TOKEN` secret to store or rotate. `@semantic-release/npm` (≥ 13) uses it
+automatically when it is configured; otherwise it fails with `ENONPMTOKEN`.
+
+**One-time setup on npmjs.com** (repo admin): on the `lockfile-assay` package →
+*Settings → Trusted Publishing* → add a GitHub Actions publisher:
+
+- Repository: `jsalvata/lockfile-assay`
+- Workflow filename: `ci.yml`
+- Environment: leave blank (the release job uses none)
+
+**First publish caveat.** Trusted publishing is configured on a package that
+already exists. `lockfile-assay` has never been published, so if npmjs.com will
+not let you add a trusted publisher for the not-yet-existing name, seed it once
+— a single `npm publish` of the initial version from a maintainer's
+`npm login`ed machine (no CI token) — then add the trusted publisher, and every
+subsequent release goes through OIDC untouched.
+
 ## The one manual gate: the memo epoch
 
 There is exactly one decision a release author must make that automation cannot:
