@@ -72,6 +72,29 @@ jobs:
       - run: pnpm build
       - name: assay this PR with the code under review
         run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD --json
+  # waiver-stamp (producer, unprivileged): computes the waiver verdict over this
+  # PR's base..head range and publishes it as the `waiver-stamp` check plus a
+  # `waiver-stamp-report` artifact. It never holds a write token — the privileged
+  # half that can post an APPROVE is .github/workflows/waiver-stamp-review.yml,
+  # which consumes that artifact. Setup: waiver-stamp docs/auto-approval-setup.md
+  # (this job is step 1 of that checklist).
+  #
+  # SHA-pinned like every other third-party action here (guarded by
+  # src/workflow-pins.test.ts): waiver-stamp's `v*` tags are immutable, but this
+  # repo's policy is hash-pin-only, so we pin the SHA and keep the trailing
+  # `# v1.12.0` in sync for Dependabot to bump.
+  waiver-stamp:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0 # waiver-stamp walks the full base..head commit range
+          persist-credentials: false
+      - name: waiver-stamp
+        uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp@edd421447bdb4bf375e68696e7480f3be433f1d1 # v1.12.0
   # Release runs only AFTER test + integration pass, and only on a push to main
   # — never in parallel with the tests. Publishing to npm uses OIDC trusted
   # publishing (no NPM_TOKEN); configure the trusted publisher for this package

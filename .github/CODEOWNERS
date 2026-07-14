@@ -1,0 +1,5 @@
+# Defense-in-depth behind waiver-stamp trust guard G1 (no commit in a PR range may
+# touch .github/**). G1 already refuses to auto-approve any PR that edits CI; this
+# requires a human code-owner review on such PRs too. Enforced only when branch
+# protection has "Require review from Code Owners" enabled.
+/.github/ @jsalvata
