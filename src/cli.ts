@@ -51,6 +51,13 @@ export function buildProgram(): Command {
             '--memo-write cannot be combined with --staged (local hook forms never write the memo)',
           );
         }
+        // Memo writes are keyed to the PR (spec §8 consult/write discovery walks
+        // the PR's commit chain + force-pushed-away heads): a write without a PR
+        // number would post a verdict nothing can ever consult back. Reject
+        // loudly instead of silently writing an unconsultable record.
+        if (o.memoWrite && o.pr === undefined) {
+          throw new UsageError('--pr is required with --memo-write');
+        }
         // commander's `(v) => Number(v)` parser coerces a non-integer/malformed
         // --pr to NaN rather than rejecting it, which would otherwise silently
         // degrade to a safe miss (no PR context → no consult). Reject it loudly

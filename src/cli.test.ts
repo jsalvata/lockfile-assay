@@ -44,3 +44,17 @@ describe('check CLI: --pr is accepted', () => {
     ).rejects.toThrow(UsageError);
   });
 });
+
+// The anchored CI form's memo write is keyed to the PR (spec §8 consult/write
+// discovery walks the PR's commit chain + force-pushed-away heads): a write
+// without a PR number would post a verdict nothing can ever consult back.
+describe('check CLI: --pr is required with --memo-write', () => {
+  it('rejects --memo-write without --pr with a UsageError', async () => {
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--memo-write'], { from: 'user' }),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--memo-write'], { from: 'user' }),
+    ).rejects.toThrow(/--pr is required with --memo-write/);
+  });
+});
