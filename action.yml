@@ -25,7 +25,7 @@ inputs:
   app-id:
     description: The dedicated App's id, for the consult identity filter.
     required: true
-  memo-token:
+  app-token:
     description: >-
       GitHub App installation token with Checks: write, from the dedicated App
       (actions/create-github-app-token). Passed to the CLI as
@@ -37,7 +37,7 @@ runs:
     - name: lockfile-assay
       shell: bash
       env:
-        LOCKFILE_ASSAY_TOKEN: ${{ inputs.memo-token }}
+        LOCKFILE_ASSAY_TOKEN: ${{ inputs.app-token }}
         LOCKFILE_ASSAY_APP_ID: ${{ inputs.app-id }}
       run: |
         npx --yes lockfile-assay check \

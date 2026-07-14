@@ -108,7 +108,7 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           pr: ${{ github.event.pull_request.number }}
           app-id: ${{ secrets.ASSAY_APP_ID }}
-          memo-token: ${{ steps.app-token.outputs.token }}
+          app-token: ${{ steps.app-token.outputs.token }}
 ```
 
 **Security discipline — read before editing this workflow.**
