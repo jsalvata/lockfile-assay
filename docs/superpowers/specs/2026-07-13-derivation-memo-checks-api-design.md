@@ -84,10 +84,12 @@ cli.ts ── postVerdict ─┤→  store.ts (adapter: trust boundary + verdict
   lists a commit's check runs filtered to an app id + check name (REST), creates
   a check run, and embeds/parses the record JSON in a run's output. `Backend` is
   the interface it satisfies.
-- **Adapter (`store.ts`).** Owns the design-independent trust boundary: compute
-  `inputsHash`, compare a record's `derivedHash` to `sha256(committed)`,
-  validate record shape before trusting it, honor `EPOCH`, and record only on a
-  pass. Never imports `report/`. Consumes a `Backend`.
+- **Adapter (`store.ts`).** Owns the design-independent trust boundary: filter
+  runs to `conclusion === 'success'` and the configured App id, parse the
+  record, compute `inputsHash`, compare a record's `derivedHash` to
+  `sha256(committed)`, validate record shape before trusting it, honor
+  `EPOCH`, and record only on a pass. Never imports `report/`. Consumes a
+  `Backend`.
 - **Wiring (`cli.ts`).** `buildMemo` assembles the adapter over a real transport
   when the CI context is present (token, repo, app id, PR, head SHA), else a
   null-object. The CI form additionally drives `postVerdict` after `runCheck`.
@@ -105,11 +107,11 @@ type StoredRecord = {
 };
 
 interface Backend {
-  // consult: records parsed from the *success* check runs on every head SHA
-  // this PR has run against — the current commit chain plus force-pushed-away
-  // heads from the timeline — filtered to the App's identity + check name. Any
+  // consult: raw check-run views for every head SHA this PR has run against —
+  // the current commit chain plus force-pushed-away heads from the timeline.
+  // No filtering, no parsing: the transport moves opaque data only. Any
   // transport error throws; the adapter maps a throw to a miss.
-  listRecords(): Promise<StoredRecord[]>;
+  listRuns(): Promise<Array<{ appId?: number; conclusion: string; summary: string }>>;
   // verdict post: one check run reflecting this run's outcome. Throws on
   // failure; the caller treats a throw as a best-effort miss and warns.
   postVerdict(v: {
@@ -122,14 +124,21 @@ interface Backend {
 ```
 
 As built, `Backend` is dumber than the interface above suggests: it carries no
-`StoredRecord` at all. The adapter (`store.ts`) embeds the record into
-`summary` itself — `embedRecord(record)` behind the HTML-comment marker (§3) —
-before calling `postVerdict`, and `checks-api.ts`'s transport never sees a
-`StoredRecord` shape on the write path (only `parseRecord` on the read path,
-inside `listRecords`). This keeps the transport record-agnostic: it moves
-opaque `summary` strings, and only the adapter knows what a record looks like
-or that one is embedded — a cleaner split than threading a typed `record?`
-field through the transport layer.
+`StoredRecord` at all, and it does none of the trust filtering either. The
+adapter (`store.ts`) owns both the record parse AND the success/app-id trust
+filter — `checks-api.ts`'s `listRuns` returns every check run it finds
+(`{ appId, conclusion, summary }`) for the candidate SHAs, unfiltered by
+conclusion or App identity, and it is `MemoDriver.consult` that discards
+non-success runs and runs from any App but the configured one, then calls the
+(private, non-exported) `parseRecord` on what survives. On the write path, the
+adapter embeds the record into `summary` itself — `embedRecord(record)`
+behind the HTML-comment marker (§3), also private to `store.ts` — before
+calling `postVerdict`; `checks-api.ts`'s transport never sees a `StoredRecord`
+shape at all. This keeps the transport record-agnostic and puts the whole
+trust boundary in one place: it moves opaque `summary` strings, and only the
+adapter knows what a record looks like, that one is embedded, or which runs
+are even worth looking at — a cleaner split than distributing trust decisions
+across both layers.
 
 ## 3. The record and where it lives
 
@@ -157,17 +166,26 @@ record).
 
 1. No committed lockfile, or no PR/token/app-id context → **miss** (null).
 2. `want = inputsHash(files, INVOCATION)`; `committedHash = sha256(committed)`.
-3. `backend.listRecords()` gathers the candidate head SHAs this PR has ever run
-   against, then reads their records:
+3. `backend.listRuns()` gathers the candidate head SHAs this PR has ever run
+   against, then returns a RAW check-run view for each — no filtering, no
+   parsing:
    - **current chain:** `GET /repos/{o}/{r}/pulls/{pr}/commits` (paginated);
    - **force-pushed-away heads:** the `beforeCommit` oid of every
      `HeadRefForcePushedEvent` in the PR's timeline, via GraphQL (still `fetch`,
      no third-party — REST does not expose the before-SHA);
-   - for each unique SHA: `GET /repos/{o}/{r}/commits/{sha}/check-runs?app_id={id}&check_name={name}&per_page=100`;
-   - parse the record from each **success** run's `output.summary`.
-4. First record with `epoch === EPOCH && inputsHash === want && derivedHash ===
-   committedHash` → `{ hit: true, derivedAt: timestamp, toolVersion }`.
-5. No match / any transport error / malformed record → **miss**.
+   - for each unique SHA: `GET /repos/{o}/{r}/commits/{sha}/check-runs?app_id={id}&check_name={name}&per_page=100`
+     (the query params are an efficiency filter on the transport, kept for a
+     smaller response — not the trust boundary; see below).
+4. The **adapter** (`MemoDriver.consult`) then filters and parses what came
+   back: keep only runs with `conclusion === 'success' && appId === this.appId`
+   (the actual trust boundary — "why the `app_id` filter is load-bearing",
+   below), then `parseRecord(run.summary)`; discard anything that fails either
+   check.
+5. First surviving record with `epoch === EPOCH && inputsHash === want &&
+   derivedHash === committedHash` → `{ hit: true, derivedAt: timestamp,
+   toolVersion }`, and the driver stashes that record so this run's own pass
+   verdict re-embeds it (GC mitigation — see the verdict-channel table below).
+6. No match / any transport error / malformed record → **miss**.
 
 **Why these SHAs — surviving both appends and force-pushes.** A push keeps
 `inputsHash` identical but changes the head SHA, and check runs are keyed to the
@@ -191,7 +209,14 @@ attack works: a PR-added `pull_request` job (no secrets, `GITHUB_TOKEN`) posts a
 check run *named* like ours carrying a poisoned record on an early commit, then a
 clean push rides it. Filtering to the App's numeric identity ignores any
 `GITHUB_TOKEN`-authored (`github-actions`) check, because check-run authorship is
-server-set. This is why the CLI must know the App id (§5).
+server-set. This is why the CLI must know the App id (§5). The filter is applied
+twice, but only one of the two is load-bearing: the transport's `?app_id=` query
+param narrows the HTTP response (an efficiency measure — a smaller list to
+parse), while the adapter's client-side re-check of `run.appId` against the
+configured id, alongside `run.conclusion === 'success'`, is the actual trust
+anchor — `parseRecord` is never even called on a run that fails it, so a
+same-named `GITHUB_TOKEN` check can never reach the parser regardless of
+whether the transport's query filtering behaves as expected.
 
 Consult is **PR-scoped** by construction (no cross-PR hits): every re-roll the
 memo kills is same-PR — source-only pushes, flaky re-runs, merge-queue
@@ -204,6 +229,8 @@ Called only on a live byte-match pass (unchanged). It **builds** the
 `pnpmVersion`, `timestamp = now`, `epoch = EPOCH`) and stashes it on the memo
 instance. It never posts and never throws. (`record()` returning `void` and
 being called on pass is preserved; only the posting moves to §4's poster.)
+`consult()` stashes into the same field on a **hit** (previous paragraph,
+step 5) — the poster below does not care which of the two populated it.
 
 ### The verdict channel — one post per run, at the CLI layer
 
@@ -214,7 +241,8 @@ maps from `(outcome, exit)`:
 | Outcome | exit | conclusion | record embedded |
 |---|---|---|---|
 | pass (live) | 0 | `success` | yes (the stashed record) |
-| pass (memo hit) / vacuous-pass | 0 | `success` | no (hit: record already on an earlier commit) |
+| pass (memo hit) | 0 | `success` | yes (re-embeds the matched record — GC mitigation) |
+| vacuous-pass | 0 | `success` | no (never consults — nothing to re-embed) |
 | not-evaluated (`off`) | 0 | `neutral` | no |
 | mismatch / skew / unsupported — `warn` | 0 | `neutral` | no |
 | mismatch / skew / unsupported — `enforce` | 1 | `failure` | no |
@@ -222,6 +250,18 @@ maps from `(outcome, exit)`:
 `conclusion = failure` iff `result.exit === 1`; a failing kind at exit 0 (warn)
 → `neutral` (visible, non-blocking); a pass/vacuous → `success`; `off` →
 `neutral`. `neutral`/`success` both satisfy a required check; `failure` blocks.
+
+**Why a memo hit re-embeds (GC mitigation).** The record a hit matched still
+physically lives in the check-run output of whatever earlier head it was
+written on — and GitHub eventually garbage-collects orphaned commits (§4's GC
+caveat, above), which would silently lose it. Re-embedding the SAME matched
+record into the *current* head's own success verdict gives it a second,
+newer home, so a future consult finds it directly on the current head even
+after the earlier one is GC'd. This is safe rather than a forged pass: the
+record was already validated (`epoch`/`inputsHash`/`derivedHash` all matched)
+before it was stashed, and `derivedHash` still equals `sha256(committed)` for
+*this* head, because a hit only happens when they already matched — nothing
+about re-embedding changes the record's meaning or manufactures a new claim.
 
 Posting on **every** returned outcome — including `off` and vacuous — is
 deliberate: a required App check must report on every run or it bricks merges
