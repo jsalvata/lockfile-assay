@@ -218,10 +218,13 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     expect(prov).toEqual({ hit: true, derivedAt: expect.any(String), toolVersion: toolVersion() });
   });
 
-  it('a memo hit posts a success verdict with no embedded record (design §4)', async () => {
-    // consult() returns a hit off `listRuns`, so `record()` is never called
-    // and `pending` stays null — the record already lives on an earlier commit,
-    // so re-embedding it on this run's verdict would be redundant, not wrong.
+  it('a memo hit re-embeds the matched record in the pass verdict (GC mitigation, design §4)', async () => {
+    // consult() finds a matching record on an earlier run's summary. The
+    // driver stashes that MATCHED record as `pending` so postVerdict's
+    // existing `if (isPass && this.pending)` embed re-writes it onto the
+    // current head's own success verdict — safe because the matched
+    // record's derivedHash already equals sha256(committed), and this
+    // protects against GitHub GC'ing the earlier head it still lived on.
     const seedSummary = await embeddedSummary(files, committed);
     const posted: Parameters<Backend['postVerdict']>[0][] = [];
     const backend: Backend = {
@@ -241,7 +244,15 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     expect(warnings).toEqual([]);
     expect(posted).toHaveLength(1);
     expect(posted[0]?.conclusion).toBe('success');
-    expect(posted[0]?.summary).not.toContain(MARKER);
+    // The re-embedded record is the SAME one that was consulted: feed the
+    // posted summary back through a fresh driver and confirm it reports
+    // identical provenance.
+    const reader = new MemoDriver(
+      fakeBackend([successRun(posted[0]?.summary ?? '')]),
+      false,
+      APP_ID,
+    );
+    expect(await reader.consult(files, committed)).toEqual(prov);
   });
 
   it('posts a failure verdict with no record on a mismatch (never memoised)', async () => {

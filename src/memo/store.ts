@@ -135,6 +135,12 @@ export class MemoDriver implements MemoHook {
         const r = parseRecord(run.summary);
         if (!r) continue;
         if (r.epoch === EPOCH && r.inputsHash === want && r.derivedHash === committedHash) {
+          // Stash the matched record so postVerdict re-embeds it on this
+          // head's own success verdict — GC mitigation (design §4): if
+          // GitHub later collects the head this record currently lives on,
+          // a later consult still finds it directly on the current head.
+          // Safe because derivedHash already equals sha256(committed).
+          this.pending = r;
           return { hit: true, derivedAt: r.timestamp, toolVersion: r.toolVersion };
         }
       }
