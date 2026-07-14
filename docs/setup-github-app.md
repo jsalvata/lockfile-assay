@@ -72,44 +72,12 @@ adds — executes on the PR's merge ref and is refused the secrets server-side.
 
 ## 4. Add the anchored workflow
 
-**Option A — copy the reference workflow.** Copy
-[`examples/lockfile-assay.yml`](../examples/lockfile-assay.yml) into
-`.github/workflows/lockfile-assay.yml`.
-
-**Option B — use the packaged action.** Reference the composite action
-([`action.yml`](../action.yml)) instead of copying the CLI invocation. You
-still check out, fetch the head, and mint the token first:
-
-```yaml
-# SECURITY-CRITICAL FILE — review every edit with care. Runs with secrets while
-# the PR controls the content under test; a careless edit reopens
-# code-execution-with-secrets. See the "Security discipline" note below and
-# https://github.com/jsalvata/lockfile-assay/blob/main/docs/setup-github-app.md
-name: lockfile-assay
-on:
-  pull_request_target:
-jobs:
-  assay:
-    runs-on: ubuntu-latest
-    environment: lockfile-assay
-    steps:
-      - uses: actions/checkout@v4        # base branch — never the PR head
-        with:
-          fetch-depth: 0
-      - run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.ASSAY_APP_ID }}
-          private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-      - uses: jsalvata/lockfile-assay@v1
-        with:
-          base: origin/${{ github.base_ref }}
-          head: ${{ github.event.pull_request.head.sha }}
-          pr: ${{ github.event.pull_request.number }}
-          app-id: ${{ secrets.ASSAY_APP_ID }}
-          app-token: ${{ steps.app-token.outputs.token }}
-```
+Copy [`examples/lockfile-assay.yml`](../examples/lockfile-assay.yml) into
+`.github/workflows/lockfile-assay.yml`. It checks out the base, fetches the
+head as git data, mints the App token, then delegates the assay step to the
+packaged composite action ([`action.yml`](../action.yml)) — so a CLI-flag
+change only touches `action.yml`, and adopters using the reference workflow
+get it for free.
 
 **Security discipline — read before editing this workflow.**
 `pull_request_target` runs with secrets while the PR controls the repository
