@@ -6,10 +6,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { INVOCATION } from '../../src/derive.js';
-import { embedRecord } from '../../src/memo/checks-api.js';
 import { EPOCH, inputsHash } from '../../src/memo/key.js';
 import { buildMemoDriver, CHECK_NAME, type StoredRecord, sha256 } from '../../src/memo/store.js';
 import type { StagedFile } from '../../src/staging.js';
+
+// embedRecord is private to store.ts (never exported — spec). This is the
+// documented wire format it writes (design §3): a JSON record behind an
+// HTML-comment marker. This test seeds check-run bodies directly on the fake
+// HTTP server (rather than always driving them through a live postVerdict),
+// so it reproduces that documented format itself.
+const MARKER = 'lockfile-assay-memo:v1';
+function embedRecord(rec: StoredRecord): string {
+  return `<!--${MARKER} ${JSON.stringify(rec)} -->`;
+}
 
 // A faked GitHub Checks API. Tests seed check runs keyed by commit SHA and
 // register which commits belong to the PR's current chain vs its force-pushed
@@ -232,7 +241,8 @@ describe('memo, against a faked Checks API', () => {
     // app_id: APP_ID passes the server's `?app_id=` query filter and the run is
     // otherwise a valid success record; only its body's app.id (111) disagrees
     // with the driver's configured appId (999). The client-side re-check (belt
-    // and suspenders — checks-api.ts listRecords) must still reject it.
+    // and suspenders — now the adapter's trust boundary, store.ts consult())
+    // must still reject it.
     gh.seedRun('sha_head', { ...successRun(record()), reportedAppId: 111 });
     expect(await driver(7, false).consult(files, committed)).toBeNull();
   });

@@ -5,7 +5,7 @@ import type { MemoProvenance, Outcome } from '../outcome.js';
 import type { StagedFile } from '../staging.js';
 import { toolVersion } from '../version.js';
 import { appId, discoverToken, originRepo } from './auth.js';
-import { ChecksApiBackend, embedRecord } from './checks-api.js';
+import { ChecksApiBackend } from './checks-api.js';
 import { EPOCH, inputsHash } from './key.js';
 
 export type StoredRecord = {
@@ -16,6 +16,48 @@ export type StoredRecord = {
   pnpmVersion: string;
   timestamp: string; // ISO-8601
 };
+
+const MARKER = 'lockfile-assay-memo:v1';
+
+/** Embed a record inside a check-run summary, behind an HTML-comment marker so
+ * it is invisible in rendered markdown and unambiguous to parse. Private to the
+ * adapter — the transport (checks-api.ts) never sees a `StoredRecord` shape. */
+function embedRecord(record: StoredRecord): string {
+  return `<!--${MARKER} ${JSON.stringify(record)} -->`;
+}
+
+/** Extract a record from a check-run summary. Any deviation — no marker, broken
+ * JSON, a missing/mistyped field — yields null (a miss, never a false record). */
+function parseRecord(summary: string | null | undefined): StoredRecord | null {
+  if (!summary) return null;
+  const m = new RegExp(`<!--${MARKER} (\\{.*?\\}) -->`).exec(summary);
+  if (!m) return null;
+  let o: unknown;
+  try {
+    o = JSON.parse(m[1] as string);
+  } catch {
+    return null;
+  }
+  const r = o as Record<string, unknown>;
+  if (
+    typeof r.epoch === 'number' &&
+    typeof r.inputsHash === 'string' &&
+    typeof r.derivedHash === 'string' &&
+    typeof r.toolVersion === 'string' &&
+    typeof r.pnpmVersion === 'string' &&
+    typeof r.timestamp === 'string'
+  ) {
+    return {
+      epoch: r.epoch,
+      inputsHash: r.inputsHash,
+      derivedHash: r.derivedHash,
+      toolVersion: r.toolVersion,
+      pnpmVersion: r.pnpmVersion,
+      timestamp: r.timestamp,
+    };
+  }
+  return null;
+}
 
 /** SHA-256 of a buffer, hex. Used to hash the committed and derived lockfiles. */
 export function sha256(buf: Buffer): string {
@@ -57,10 +99,11 @@ export function verdictSummary(outcome: Outcome): string {
 }
 
 export interface Backend {
-  // records parsed from the *success* check runs on every head SHA this PR has
-  // run against (current chain + force-pushed-away heads), filtered to the App
-  // id + check name. Throws on transport error; the adapter maps it to a miss.
-  listRecords(): Promise<StoredRecord[]>;
+  // raw check-run views for every head SHA this PR has run against (current
+  // chain + force-pushed-away heads). No filtering, no parsing — the adapter
+  // owns both (the trust boundary lives here, not in the transport). Throws
+  // on transport error; the adapter maps it to a miss.
+  listRuns(): Promise<Array<{ appId?: number; conclusion: string; summary: string }>>;
   postVerdict(v: {
     headSha: string;
     conclusion: 'success' | 'failure' | 'neutral';
@@ -75,6 +118,7 @@ export class MemoDriver implements MemoHook {
   constructor(
     private readonly backend: Backend | null,
     private readonly write: boolean,
+    private readonly appId: number | null,
   ) {}
 
   async consult(files: StagedFile[], committed: Buffer | null): Promise<MemoProvenance | null> {
@@ -82,7 +126,14 @@ export class MemoDriver implements MemoHook {
     try {
       const want = inputsHash(files, INVOCATION);
       const committedHash = sha256(committed);
-      for (const r of await this.backend.listRecords()) {
+      for (const run of await this.backend.listRuns()) {
+        // The security anchor (design §4, "why the app_id filter is
+        // load-bearing"): only a *success* run authored by the configured
+        // App id can ever be read as a record — a GITHUB_TOKEN/github-actions
+        // check named `lockfile-assay` must never be read as a record.
+        if (run.conclusion !== 'success' || run.appId !== this.appId) continue;
+        const r = parseRecord(run.summary);
+        if (!r) continue;
         if (r.epoch === EPOCH && r.inputsHash === want && r.derivedHash === committedHash) {
           return { hit: true, derivedAt: r.timestamp, toolVersion: r.toolVersion };
         }
@@ -153,7 +204,7 @@ export function buildMemoDriver(opts: {
   const token = discoverToken(env);
   const repo = originRepo(opts.cwd);
   const id = appId(env);
-  if (!token || !repo || id === null) return new MemoDriver(null, opts.write);
+  if (!token || !repo || id === null) return new MemoDriver(null, opts.write, null);
   const slash = repo.indexOf('/');
   const backend = new ChecksApiBackend({
     token,
@@ -165,5 +216,5 @@ export function buildMemoDriver(opts: {
     apiBase: opts.apiBase,
     fetchImpl: opts.fetchImpl,
   });
-  return new MemoDriver(backend, opts.write);
+  return new MemoDriver(backend, opts.write, id);
 }

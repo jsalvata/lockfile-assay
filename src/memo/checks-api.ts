@@ -1,45 +1,4 @@
-import type { Backend, StoredRecord } from './store.js';
-
-export const MARKER = 'lockfile-assay-memo:v1';
-
-/** Embed a record inside a check-run summary, behind an HTML-comment marker so
- * it is invisible in rendered markdown and unambiguous to parse. */
-export function embedRecord(record: StoredRecord): string {
-  return `<!--${MARKER} ${JSON.stringify(record)} -->`;
-}
-
-/** Extract a record from a check-run summary. Any deviation — no marker, broken
- * JSON, a missing/mistyped field — yields null (a miss, never a false record). */
-export function parseRecord(summary: string | null | undefined): StoredRecord | null {
-  if (!summary) return null;
-  const m = new RegExp(`<!--${MARKER} (\\{.*?\\}) -->`).exec(summary);
-  if (!m) return null;
-  let o: unknown;
-  try {
-    o = JSON.parse(m[1] as string);
-  } catch {
-    return null;
-  }
-  const r = o as Record<string, unknown>;
-  if (
-    typeof r.epoch === 'number' &&
-    typeof r.inputsHash === 'string' &&
-    typeof r.derivedHash === 'string' &&
-    typeof r.toolVersion === 'string' &&
-    typeof r.pnpmVersion === 'string' &&
-    typeof r.timestamp === 'string'
-  ) {
-    return {
-      epoch: r.epoch,
-      inputsHash: r.inputsHash,
-      derivedHash: r.derivedHash,
-      toolVersion: r.toolVersion,
-      pnpmVersion: r.pnpmVersion,
-      timestamp: r.timestamp,
-    };
-  }
-  return null;
-}
+import type { Backend } from './store.js';
 
 const DEFAULT_API = 'https://api.github.com';
 
@@ -72,10 +31,13 @@ export class ChecksApiBackend implements Backend {
     };
   }
 
-  async listRecords(): Promise<StoredRecord[]> {
+  /** Raw check-run views for the PR's candidate head SHAs — no filtering, no
+   * parsing. The adapter (store.ts) owns the success/app-id trust filter and
+   * the record parse; this transport only moves opaque `summary` strings. */
+  async listRuns(): Promise<Array<{ appId?: number; conclusion: string; summary: string }>> {
     if (this.o.pr === undefined) return []; // no PR context → nothing to consult
     const shas = await this.candidateShas(this.o.pr);
-    const records: StoredRecord[] = [];
+    const runs: Array<{ appId?: number; conclusion: string; summary: string }> = [];
     for (const sha of shas) {
       // No page loop here (unlike candidateShas below): a single SHA/app/check-name
       // combination realistically has far fewer than 100 runs, so per_page=100 is
@@ -88,19 +50,14 @@ export class ChecksApiBackend implements Backend {
       if (!res.ok) continue; // a GC'd / unreadable SHA → skip (safe miss)
       const body = (await res.json()) as { check_runs?: CheckRun[] };
       for (const run of body.check_runs ?? []) {
-        if (run.conclusion !== 'success') continue; // records live only in success runs
-        // Belt-and-suspenders: re-verify the App identity client-side even though
-        // the request already filtered by `app_id`. This is the single trust
-        // anchor of the whole security model (design §4, "why the app_id filter
-        // is load-bearing") — a GITHUB_TOKEN/github-actions check named
-        // `lockfile-assay` must never be read as a record, so never trust a run
-        // whose own body disagrees with the query filter.
-        if (run.app?.id !== this.o.appId) continue;
-        const rec = parseRecord(run.output?.summary);
-        if (rec) records.push(rec);
+        runs.push({
+          appId: run.app?.id,
+          conclusion: run.conclusion ?? '',
+          summary: run.output?.summary ?? '',
+        });
       }
     }
-    return records;
+    return runs;
   }
 
   /** Head SHAs this PR has ever run against: the current commit chain (REST)

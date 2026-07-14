@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { INVOCATION } from '../derive.js';
 import type { Outcome } from '../outcome.js';
 import type { StagedFile } from '../staging.js';
-import { parseRecord } from './checks-api.js';
-import { EPOCH, inputsHash } from './key.js';
-import type { Backend, StoredRecord } from './store.js';
-import { buildMemoDriver, CHECK_NAME, conclusion, MemoDriver, sha256 } from './store.js';
+import { toolVersion } from '../version.js';
+import { EPOCH } from './key.js';
+import type { Backend } from './store.js';
+import { buildMemoDriver, CHECK_NAME, conclusion, MemoDriver } from './store.js';
 
 const O = {
   pass: { kind: 'pass' } as Outcome,
@@ -36,73 +35,38 @@ describe('conclusion — (outcome, exit) → check-run conclusion', () => {
   });
 });
 
+// The App id the adapter is configured with in these tests — the security
+// anchor consult filters runs against (design §4).
+const APP_ID = 424242;
+// The wire format store.ts's (private) embedRecord writes. parseRecord/
+// embedRecord are private to store.ts (spec: never exported), so tests that
+// need a genuinely embedded record drive it through the public record() +
+// postVerdict() API (see `embeddedSummary` below); tests that need a
+// malformed/incompatible record hand-craft raw text in this documented
+// format instead, since no encoder can produce invalid output by
+// construction.
+const MARKER = 'lockfile-assay-memo:v1';
+
 const files: StagedFile[] = [{ path: 'pnpm-lock.yaml', bytes: Buffer.from('lock') }];
 const committed = Buffer.from('committed-lock');
-const want = inputsHash(files, INVOCATION);
 
-function fakeBackend(records: StoredRecord[]): Backend {
+function fakeBackend(
+  runs: Array<{ appId?: number; conclusion: string; summary: string }>,
+): Backend {
   return {
-    listRecords: async () => records,
+    listRuns: async () => runs,
     postVerdict: async () => {},
   };
 }
 
-const good: StoredRecord = {
-  epoch: EPOCH,
-  inputsHash: want,
-  derivedHash: sha256(committed),
-  toolVersion: '1.0.0',
-  pnpmVersion: '10.34.1',
-  timestamp: '2026-07-13T00:00:00.000Z',
-};
-
-describe('MemoDriver.consult — pass or miss, never a failure', () => {
-  it('hits when epoch + inputsHash + derivedHash all match', async () => {
-    const d = new MemoDriver(fakeBackend([good]), false);
-    expect(await d.consult(files, committed)).toEqual({
-      hit: true,
-      derivedAt: good.timestamp,
-      toolVersion: good.toolVersion,
-    });
-  });
-
-  it('misses (stale record) when derivedHash != sha256(committed)', async () => {
-    const stale = { ...good, derivedHash: sha256(Buffer.from('other')) };
-    const d = new MemoDriver(fakeBackend([stale]), false);
-    expect(await d.consult(files, committed)).toBeNull();
-  });
-
-  it('misses under a different epoch (isolation)', async () => {
-    const d = new MemoDriver(fakeBackend([{ ...good, epoch: EPOCH + 1 }]), false);
-    expect(await d.consult(files, committed)).toBeNull();
-  });
-
-  it('misses when there is no committed lockfile', async () => {
-    const d = new MemoDriver(fakeBackend([good]), false);
-    expect(await d.consult(files, null)).toBeNull();
-  });
-
-  it('degrades a transport error to a miss (never throws)', async () => {
-    const throwing: Backend = {
-      listRecords: async () => {
-        throw new Error('502 from GitHub');
-      },
-      postVerdict: async () => {},
-    };
-    const d = new MemoDriver(throwing, false);
-    expect(await d.consult(files, committed)).toBeNull();
-  });
-
-  it('is a no-op (miss) with a null backend', async () => {
-    const d = new MemoDriver(null, false);
-    expect(await d.consult(files, committed)).toBeNull();
-  });
-});
+function successRun(summary: string, appId: number = APP_ID) {
+  return { appId, conclusion: 'success', summary };
+}
 
 function capturingBackend() {
   const posted: Parameters<Backend['postVerdict']>[0][] = [];
   const backend: Backend = {
-    listRecords: async () => [],
+    listRuns: async () => [],
     postVerdict: async (v) => {
       posted.push(v);
     },
@@ -110,12 +74,127 @@ function capturingBackend() {
   return { backend, posted };
 }
 
+/** Drives record() + postVerdict() through a real MemoDriver to obtain a
+ * genuinely embedded summary string — exercises store.ts's private
+ * embedRecord without reaching into it directly (spec: it must stay
+ * unexported). */
+async function embeddedSummary(
+  recordFiles: StagedFile[],
+  derived: Buffer,
+  pnpmVersion = '10.34.1',
+): Promise<string> {
+  const { backend, posted } = capturingBackend();
+  const d = new MemoDriver(backend, true, APP_ID);
+  await d.record(recordFiles, derived, pnpmVersion);
+  await d.postVerdict({ outcome: { kind: 'pass' } as Outcome, exit: 0, headSha: 'x' });
+  return posted[0]?.summary ?? '';
+}
+
+describe('MemoDriver.consult — pass or miss, never a failure', () => {
+  it('hits when epoch + inputsHash + derivedHash all match', async () => {
+    const summary = await embeddedSummary(files, committed);
+    const d = new MemoDriver(fakeBackend([successRun(summary)]), false, APP_ID);
+    const prov = await d.consult(files, committed);
+    expect(prov?.hit).toBe(true);
+    expect(prov?.toolVersion).toBe(toolVersion());
+    expect(typeof prov?.derivedAt).toBe('string');
+  });
+
+  it('misses (stale record) when derivedHash != sha256(committed)', async () => {
+    const summary = await embeddedSummary(files, Buffer.from('other'));
+    const d = new MemoDriver(fakeBackend([successRun(summary)]), false, APP_ID);
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('misses under a different epoch (isolation)', async () => {
+    const summary = await embeddedSummary(files, committed);
+    const tampered = summary.replace(`"epoch":${EPOCH}`, `"epoch":${EPOCH + 1}`);
+    expect(tampered).not.toBe(summary); // guard: the replace must actually have hit
+    const d = new MemoDriver(fakeBackend([successRun(tampered)]), false, APP_ID);
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('misses when there is no committed lockfile', async () => {
+    const summary = await embeddedSummary(files, committed);
+    const d = new MemoDriver(fakeBackend([successRun(summary)]), false, APP_ID);
+    expect(await d.consult(files, null)).toBeNull();
+  });
+
+  it('misses when a matching record sits on a non-success run', async () => {
+    const summary = await embeddedSummary(files, committed);
+    const d = new MemoDriver(
+      fakeBackend([{ appId: APP_ID, conclusion: 'neutral', summary }]),
+      false,
+      APP_ID,
+    );
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('misses when a run reports an appId other than the configured App (trust anchor)', async () => {
+    const summary = await embeddedSummary(files, committed);
+    const d = new MemoDriver(fakeBackend([successRun(summary, APP_ID + 1)]), false, APP_ID);
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('degrades a transport error to a miss (never throws)', async () => {
+    const throwing: Backend = {
+      listRuns: async () => {
+        throw new Error('502 from GitHub');
+      },
+      postVerdict: async () => {},
+    };
+    const d = new MemoDriver(throwing, false, APP_ID);
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('is a no-op (miss) with a null backend', async () => {
+    const d = new MemoDriver(null, false, APP_ID);
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+});
+
+describe('MemoDriver.consult — malformed records never produce a false hit', () => {
+  it('misses when the marker is absent', async () => {
+    const d = new MemoDriver(
+      fakeBackend([successRun('just a human summary, no marker')]),
+      false,
+      APP_ID,
+    );
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('misses on broken JSON after the marker', async () => {
+    const d = new MemoDriver(
+      fakeBackend([successRun(`<!--${MARKER} {not json} -->`)]),
+      false,
+      APP_ID,
+    );
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('misses when a required field is missing/mistyped', async () => {
+    const d = new MemoDriver(
+      fakeBackend([successRun(`<!--${MARKER} {"epoch":"1","inputsHash":"x"} -->`)]),
+      false,
+      APP_ID,
+    );
+    expect(await d.consult(files, committed)).toBeNull();
+  });
+
+  it('non-greedy capture stops at the first close even with trailing "} -->" text', async () => {
+    const good = await embeddedSummary(files, committed);
+    const summary = `${good} trailing note like {"forged":true} -->`;
+    const d = new MemoDriver(fakeBackend([successRun(summary)]), false, APP_ID);
+    expect(await d.consult(files, committed)).toMatchObject({ hit: true });
+  });
+});
+
 const derived = Buffer.from('derived-lock');
 
 describe('MemoDriver.record + postVerdict — the write path', () => {
   it('embeds the record in a success verdict on a live pass', async () => {
     const { backend, posted } = capturingBackend();
-    const d = new MemoDriver(backend, true);
+    const d = new MemoDriver(backend, true, APP_ID);
     await d.record(files, derived, '10.34.1'); // evaluate() calls this on a byte-match pass
     const warnings = await d.postVerdict({
       outcome: { kind: 'pass' } as Outcome,
@@ -124,27 +203,34 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     });
     expect(warnings).toEqual([]);
     expect(posted).toHaveLength(1);
-    expect(posted[0].conclusion).toBe('success');
-    expect(posted[0].headSha).toBe('deadbeef');
-    const rec = parseRecord(posted[0].summary);
-    expect(rec?.inputsHash).toBe(inputsHash(files, INVOCATION));
-    expect(rec?.derivedHash).toBe(sha256(derived));
-    expect(rec?.pnpmVersion).toBe('10.34.1');
-    expect(rec?.epoch).toBe(EPOCH);
+    expect(posted[0]?.conclusion).toBe('success');
+    expect(posted[0]?.headSha).toBe('deadbeef');
+    expect(posted[0]?.summary).toContain(`"pnpmVersion":"10.34.1"`);
+    expect(posted[0]?.summary).toContain(`"epoch":${EPOCH}`);
+    // The embedded record round-trips through the public API: feeding the
+    // posted summary back as a matching success run must hit.
+    const reader = new MemoDriver(
+      fakeBackend([successRun(posted[0]?.summary ?? '')]),
+      false,
+      APP_ID,
+    );
+    const prov = await reader.consult(files, derived);
+    expect(prov).toEqual({ hit: true, derivedAt: expect.any(String), toolVersion: toolVersion() });
   });
 
   it('a memo hit posts a success verdict with no embedded record (design §4)', async () => {
-    // consult() returns a hit off `listRecords`, so `record()` is never called
+    // consult() returns a hit off `listRuns`, so `record()` is never called
     // and `pending` stays null — the record already lives on an earlier commit,
     // so re-embedding it on this run's verdict would be redundant, not wrong.
+    const seedSummary = await embeddedSummary(files, committed);
     const posted: Parameters<Backend['postVerdict']>[0][] = [];
     const backend: Backend = {
-      listRecords: async () => [good],
+      listRuns: async () => [successRun(seedSummary)],
       postVerdict: async (v) => {
         posted.push(v);
       },
     };
-    const d = new MemoDriver(backend, true);
+    const d = new MemoDriver(backend, true, APP_ID);
     const prov = await d.consult(files, committed);
     expect(prov).toMatchObject({ hit: true });
     const warnings = await d.postVerdict({
@@ -154,13 +240,13 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
     });
     expect(warnings).toEqual([]);
     expect(posted).toHaveLength(1);
-    expect(posted[0].conclusion).toBe('success');
-    expect(parseRecord(posted[0].summary)).toBeNull();
+    expect(posted[0]?.conclusion).toBe('success');
+    expect(posted[0]?.summary).not.toContain(MARKER);
   });
 
   it('posts a failure verdict with no record on a mismatch (never memoised)', async () => {
     const { backend, posted } = capturingBackend();
-    const d = new MemoDriver(backend, true);
+    const d = new MemoDriver(backend, true, APP_ID);
     // record() is NOT called on a mismatch — evaluate() only calls it on a pass
     const warnings = await d.postVerdict({
       outcome: { kind: 'mismatch', committed, derived } as Outcome,
@@ -168,18 +254,18 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
       headSha: 'deadbeef',
     });
     expect(warnings).toEqual([]);
-    expect(posted[0].conclusion).toBe('failure');
-    expect(parseRecord(posted[0].summary)).toBeNull();
+    expect(posted[0]?.conclusion).toBe('failure');
+    expect(posted[0]?.summary).not.toContain(MARKER);
   });
 
   it('warns (drift wording) but never throws when a pass write fails', async () => {
     const backend: Backend = {
-      listRecords: async () => [],
+      listRuns: async () => [],
       postVerdict: async () => {
         throw new Error('403 Forbidden');
       },
     };
-    const d = new MemoDriver(backend, true);
+    const d = new MemoDriver(backend, true, APP_ID);
     await d.record(files, derived, '10.34.1');
     const warnings = await d.postVerdict({
       outcome: { kind: 'pass' } as Outcome,
@@ -193,7 +279,7 @@ describe('MemoDriver.record + postVerdict — the write path', () => {
 
   it('is a no-op when write is false (local read-only forms never post)', async () => {
     const { backend, posted } = capturingBackend();
-    const d = new MemoDriver(backend, false);
+    const d = new MemoDriver(backend, false, APP_ID);
     await d.record(files, derived, '10.34.1');
     const warnings = await d.postVerdict({
       outcome: { kind: 'pass' } as Outcome,
