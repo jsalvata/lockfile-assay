@@ -1,0 +1,88 @@
+# The adopter's PRIVILEGED reviewer caller (waiver-stamp docs/auto-approval-setup.md,
+# step 2). It holds a pull-requests: write token — the credential that removes human
+# review by posting an APPROVE. Its integrity is the whole system's integrity, so this
+# file reproduces a specific, security-reviewed shape. **Read this comment block before
+# editing anything beyond the two marked EDIT points.**
+#
+# WHY THIS SHAPE (the pwn-request defense):
+#
+#   1. `uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@<sha>` is pinned
+#      to an immutable ref of an EXTERNAL repo. That makes the action's code trusted — a
+#      PR against THIS repo cannot alter what this job runs, no matter what it changes in
+#      its own branch. This repo's policy is hash-pin-only (src/workflow-pins.test.ts), so
+#      we pin the full commit SHA rather than the `@v1.12.0` tag the upstream template
+#      ships; the trailing `# v1.12.0` keeps Dependabot able to bump it. What you must NOT
+#      do is pin a mutable ref — a branch, or `@main` — which would let anyone who
+#      compromised the upstream repo change the code holding this write token.
+#   2. The checkout below targets `${{ github.event.repository.default_branch }}` — THIS
+#      repo's default branch — never the PR head. `persist-credentials: false` means even
+#      that checkout can't leak a push-capable credential.
+#   3. The PR head commit is brought in with a separate `git fetch`, purely as DATA
+#      (objects in the git store) — never checked out, never executed. The reviewer action
+#      reads those commits via git plumbing (diffs, `git show`) to run its trust guards
+#      (G1: no `.github/**` edit anywhere in the range; G2: any manifest/lockfile change is
+#      confined to an honest, allowlisted, up-moving semver bump) — all git DATA reads,
+#      zero code execution from the PR.
+#
+#   Together: the only code this job ever executes is (a) the pinned external action and
+#   (b) this repo's own default-branch git history. The PR's contents are never anything
+#   more than bytes on disk that get diffed. Getting this backwards — e.g. checking out
+#   `head_sha` instead of the default branch — reintroduces the exact "pwn request"
+#   vulnerability class GitHub Actions is famous for.
+name: waiver-stamp-review
+
+on:
+  workflow_run:
+    workflows: [CI] # <-- name(s) of the CI workflow(s) that produce the backstop checks
+                    #     named in `ci-checks` below — matches the `name:` at the top of
+                    #     .github/workflows/ci.yml, which hosts the waiver-stamp producer.
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  checks: read
+  contents: read
+  actions: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: waiver-stamp-review-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      # SECURITY (pwn-request): this job has a write token. It runs the TRUSTED
+      # default-branch code, NEVER anything derived from the PR head.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch the PR head commits (data for G1/G2 — never executed)
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: git fetch --no-tags --force origin "$HEAD_SHA"
+
+      # Hash-pinned per repo policy (see the SECURITY header). Bump via the trailing
+      # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.12.0 --jq .sha
+      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@edd421447bdb4bf375e68696e7480f3be433f1d1 # v1.12.0
+        with:
+          # CHECK-RUN names that must be green on the head SHA — NOT workflow job ids.
+          # The two differ under `name:`/matrix: e.g. the `integration` matrix over pnpm
+          # 9.12.0 / 10.34.1 produces "integration (9.12.0)" and "integration (10.34.1)",
+          # each needing its own line. `release` is push-only (skipped on PRs) so it is
+          # deliberately absent — listing a never-green check would hang fail-closed. Do
+          # NOT list "waiver-stamp" itself — its verdict IS the artifact this action trusts.
+          # Read the live names off a recent PR:
+          #   gh api repos/jsalvata/lockfile-assay/commits/<head-sha>/check-runs --jq '.check_runs[].name'
+          ci-checks: |
+            test
+            integration (9.12.0)
+            integration (10.34.1)
+            dogfood
+          # This repo's own lockfile-assay gate IS a lockfile-honesty check: the App-posted
+          # anchored verdict (.github/workflows/lockfile-assay.yml) covers dependency-bump
+          # honesty, so G2 defers to it and the APPROVE body drops the honesty caveat.
+          lockfile-honesty-checks: |
+            lockfile-assay
