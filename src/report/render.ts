@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Mode, Outcome } from '../outcome.js';
+import type { Outcome, ReportMode } from '../outcome.js';
 import { toolVersion } from '../version.js';
 import type { Delta } from './delta.js';
 
@@ -12,7 +12,7 @@ const TOOL_VERSION: string = toolVersion();
 
 export type ReportInput = {
   outcome: Outcome;
-  mode: Mode | 'unknown';
+  mode: ReportMode;
   base: string | null;
   head: string;
   toolchain?: { pinned: string; effective: string };

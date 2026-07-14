@@ -20,6 +20,10 @@ describe('runCheck', () => {
     const r = await runCheck({ base, head, cwd: dir });
     expect(r.outcome.kind).toBe('vacuous-pass');
     expect(r.exit).toBe(0);
+    // the fast path short-circuits BEFORE the config read, so no mode was
+    // determined. Base config here says `enforce`; reporting 'off' would be a
+    // flat lie that reads as "the assay is disabled in this repo".
+    expect(r.mode).toBe('unknown');
   });
 
   it('not evaluated when base has no config', async () => {

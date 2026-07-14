@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CannotEvaluate, UsageError } from './errors.js';
-import { exitCode, exitForError, type Mode, type Outcome } from './outcome.js';
+import { exitCode, exitForError, type Outcome, type ReportMode } from './outcome.js';
 
 const derived = Buffer.from('x');
 const failing: Outcome[] = [
@@ -24,7 +24,11 @@ describe('exitCode', () => {
   });
   it('passing outcomes exit 0 in every mode', () => {
     for (const o of passing)
-      for (const m of ['off', 'warn', 'enforce'] as Mode[]) expect(exitCode(o, m)).toBe(0);
+      for (const m of ['off', 'warn', 'enforce', 'unknown'] as ReportMode[])
+        expect(exitCode(o, m)).toBe(0);
+  });
+  it('an undetermined mode never fails, whatever the outcome', () => {
+    for (const o of [...failing, ...passing]) expect(exitCode(o, 'unknown')).toBe(0);
   });
 });
 
