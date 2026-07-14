@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { diffExcerpt, refreshRecipe, renderJson } from './render.js';
+import type { ReportInput } from './render.js';
+import { diffExcerpt, refreshRecipe, renderHuman, renderJson } from './render.js';
 
 describe('render', () => {
   it('refresh recipe restores base, or deletes when base had none', () => {
@@ -46,5 +47,27 @@ describe('render', () => {
     expect(j.outcome).toBe('cannot-evaluate');
     expect(j.reason).toBe('registry down: connection refused');
     expect(j.mode).toBe('unknown');
+  });
+});
+
+const base: ReportInput = {
+  outcome: { kind: 'pass' },
+  mode: 'enforce',
+  base: 'abc',
+  head: 'def',
+  warnings: ['could not record the derivation memo (403); this pass is not durable'],
+};
+
+describe('report warnings', () => {
+  it('renders warnings in the json report', () => {
+    const j = JSON.parse(renderJson(base));
+    expect(j.warnings).toEqual(base.warnings);
+  });
+  it('renders warnings as warning: lines in the human report', () => {
+    expect(renderHuman(base)).toMatch(/warning: could not record the derivation memo/);
+  });
+  it('omits warnings when there are none', () => {
+    const j = JSON.parse(renderJson({ ...base, warnings: undefined }));
+    expect(j.warnings).toBeUndefined();
   });
 });

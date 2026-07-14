@@ -47,11 +47,10 @@ jobs:
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-      - name: lockfile-assay
-        env:
-          LOCKFILE_ASSAY_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          npx --yes lockfile-assay check \
-            --base "origin/${{ github.base_ref }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
-            --memo-write --json
+      - uses: jsalvata/lockfile-assay@v1
+        with:
+          base: origin/${{ github.base_ref }}
+          head: ${{ github.event.pull_request.head.sha }}
+          pr: ${{ github.event.pull_request.number }}
+          app-id: ${{ secrets.ASSAY_APP_ID }}
+          app-token: ${{ steps.app-token.outputs.token }}

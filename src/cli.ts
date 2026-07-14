@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { runCheck, runStagedCheck } from './check.js';
 import { CannotEvaluate, StagingError, UsageError } from './errors.js';
+import { buildMemoDriver } from './memo/store.js';
 import { exitForError } from './outcome.js';
 import { runPrepush } from './prepush.js';
 import { renderHuman, renderJson } from './report/render.js';
@@ -14,13 +15,12 @@ import { renderHuman, renderJson } from './report/render.js';
  * 'user' })` — without spawning the binary. The entry-point guard at the foot
  * of the file runs it; importing this module does not.
  *
- * The derivation memo (spec §8) is not wired in this build: the Contents-API
- * store was removed pending the Checks-API backend (spec §13), so every `check`
- * derives live. `--memo-write` stays in the CLI surface — the anchored CI form,
- * `action.yml`, and the docs all pass it, and the Checks-API backend reuses it
- * unchanged — but it is inert until that backend lands. The `--staged` guard is
- * likewise kept: it is a design-independent usage rule (local hook forms never
- * write), not a store detail.
+ * The derivation memo (spec §8) is wired via `buildMemoDriver`: the CI form
+ * (`check --base/--head`) builds a write-capable driver, passes it to
+ * `runCheck` for consult, and posts the verdict check run afterwards; the
+ * local `--staged` form builds a read-only driver (consult only, never
+ * posts). The `--staged`+`--memo-write` guard stays: local hook forms never
+ * write the memo regardless of the flag.
  */
 export function buildProgram(): Command {
   const program = new Command();
@@ -32,6 +32,7 @@ export function buildProgram(): Command {
     .option('--head <ref>', 'head ref', 'HEAD')
     .option('--staged', 'check the index instead of a commit (git hook form)')
     .option('--memo-write', 'record passing derivations to the memo (anchored CI form only)')
+    .option('--pr <number>', 'PR number (enables memo consult in the CI form)', (v) => Number(v))
     .option('--json', 'emit the machine report')
     .action(
       async (o: {
@@ -39,6 +40,7 @@ export function buildProgram(): Command {
         head: string;
         staged?: boolean;
         memoWrite?: boolean;
+        pr?: number;
         json?: boolean;
       }) => {
         // Local hook forms never write the memo (spec §8), so --memo-write with
@@ -49,15 +51,38 @@ export function buildProgram(): Command {
             '--memo-write cannot be combined with --staged (local hook forms never write the memo)',
           );
         }
+        // Memo writes are keyed to the PR (spec §8 consult/write discovery walks
+        // the PR's commit chain + force-pushed-away heads): a write without a PR
+        // number would post a verdict nothing can ever consult back. Reject
+        // loudly instead of silently writing an unconsultable record.
+        if (o.memoWrite && o.pr === undefined) {
+          throw new UsageError('--pr is required with --memo-write');
+        }
+        // commander's `(v) => Number(v)` parser coerces a non-integer/malformed
+        // --pr to NaN rather than rejecting it, which would otherwise silently
+        // degrade to a safe miss (no PR context → no consult). Reject it loudly
+        // instead, mirroring appId()'s validation of LOCKFILE_ASSAY_APP_ID.
+        if (o.pr !== undefined && (!Number.isInteger(o.pr) || o.pr <= 0)) {
+          throw new UsageError('--pr must be a positive integer');
+        }
         if (o.staged) {
-          const r = await runStagedCheck();
+          // local hook form: read-only memo (consult only when --pr given), never posts
+          const memo = buildMemoDriver({ write: false, pr: o.pr });
+          const r = await runStagedCheck({ memo });
           console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
           process.exitCode = r.exit;
           return;
         }
         if (!o.base) throw new UsageError('--base <ref> is required');
-        const r = await runCheck({ base: o.base, head: o.head });
-        console.log(o.json ? renderJson(r.report) : renderHuman(r.report));
+        const memo = buildMemoDriver({ write: !!o.memoWrite, pr: o.pr });
+        const r = await runCheck({ base: o.base, head: o.head, memo });
+        const warnings = await memo.postVerdict({
+          outcome: r.outcome,
+          exit: r.exit,
+          headSha: r.report.head,
+        });
+        const report = warnings.length ? { ...r.report, warnings } : r.report;
+        console.log(o.json ? renderJson(report) : renderHuman(report));
         process.exitCode = r.exit;
       },
     );

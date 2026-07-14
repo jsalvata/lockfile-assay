@@ -13,16 +13,22 @@ description: >-
   workflow — see docs/setup-github-app.md.
 inputs:
   base:
-    description: Base ref (the PR merge-base), e.g. origin/${{ github.base_ref }}.
+    description: Base ref (the PR merge-base), e.g. `origin/${{ github.base_ref }}`.
     required: true
   head:
-    description: Head ref to check, e.g. the PR head SHA (fetched as git data).
+    description: Head ref to check — the PR head SHA, e.g. `${{ github.event.pull_request.head.sha }}`.
     required: false
     default: HEAD
+  pr:
+    description: PR number, for memo consult, e.g. `${{ github.event.pull_request.number }}`.
+    required: true
+  app-id:
+    description: The dedicated App's id, for the consult identity filter.
+    required: true
   app-token:
     description: >-
-      GitHub App installation token (Checks: read and write), from
-      actions/create-github-app-token. Passed to the CLI as
+      GitHub App installation token with Checks: write, from the dedicated App
+      (actions/create-github-app-token). Passed to the CLI as
       LOCKFILE_ASSAY_TOKEN. See docs/setup-github-app.md.
     required: true
 runs:
@@ -32,7 +38,9 @@ runs:
       shell: bash
       env:
         LOCKFILE_ASSAY_TOKEN: ${{ inputs.app-token }}
+        LOCKFILE_ASSAY_APP_ID: ${{ inputs.app-id }}
       run: |
         npx --yes lockfile-assay check \
           --base "${{ inputs.base }}" --head "${{ inputs.head }}" \
+          --pr "${{ inputs.pr }}" \
           --memo-write --json

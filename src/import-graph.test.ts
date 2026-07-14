@@ -67,4 +67,16 @@ describe('spec §13 trust-path discipline', () => {
       if (usesYaml) expect(allowed, `${file} must not import yaml`).toBe(true);
     }
   });
+
+  // The memo must not pull the report layer into the trust path (spec §13). An
+  // explicit guard so it cannot silently regress.
+  it('memo/ imports no report/ module', () => {
+    for (const file of allSrcFiles()) {
+      if (!file.startsWith('memo/')) continue;
+      for (const imp of importsOf(file)) {
+        const reachesReport = imp.includes('report/');
+        expect(reachesReport, `${file} must not import ${imp}`).toBe(false);
+      }
+    }
+  });
 });

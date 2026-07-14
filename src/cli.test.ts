@@ -17,3 +17,44 @@ describe('check CLI: --memo-write is incompatible with --staged', () => {
     ).rejects.toThrow(/--memo-write cannot be combined with --staged/);
   });
 });
+
+describe('check CLI: --pr is accepted', () => {
+  it('parses --pr as a number without a usage error', async () => {
+    // With no token/app-id in the env the driver is a null-object, so this runs
+    // the real path but performs no network I/O. It must not throw a UsageError
+    // for an unknown option.
+    const program = buildProgram();
+    // A bogus base makes runCheck throw an *evaluation* error, not a usage one;
+    // we only assert the option is recognised (no "unknown option '--pr'").
+    await expect(
+      program.parseAsync(['check', '--base', 'HEAD', '--head', 'HEAD', '--pr', '7'], {
+        from: 'user',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a non-integer --pr with a UsageError instead of coercing to NaN', async () => {
+    // commander's option parser turns 'abc' into NaN; left unchecked that would
+    // silently become "no PR context" (a safe-looking miss) rather than a loud
+    // rejection of the malformed invocation.
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--head', 'HEAD', '--pr', 'abc'], {
+        from: 'user',
+      }),
+    ).rejects.toThrow(UsageError);
+  });
+});
+
+// The anchored CI form's memo write is keyed to the PR (spec §8 consult/write
+// discovery walks the PR's commit chain + force-pushed-away heads): a write
+// without a PR number would post a verdict nothing can ever consult back.
+describe('check CLI: --pr is required with --memo-write', () => {
+  it('rejects --memo-write without --pr with a UsageError', async () => {
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--memo-write'], { from: 'user' }),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      buildProgram().parseAsync(['check', '--base', 'HEAD', '--memo-write'], { from: 'user' }),
+    ).rejects.toThrow(/--pr is required with --memo-write/);
+  });
+});
