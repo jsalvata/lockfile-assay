@@ -1,3 +1,11 @@
+## [1.0.3](https://github.com/jsalvata/lockfile-assay/compare/v1.0.2...v1.0.3) (2026-07-15)
+
+
+### Bug Fixes
+
+* pin third-party actions by sha, not tag ([6fbc6e7](https://github.com/jsalvata/lockfile-assay/commit/6fbc6e76b3d4cf18a73597bea64d8fa202f9934d))
+* report mode unknown, not off, on vacuous pass ([79b76ba](https://github.com/jsalvata/lockfile-assay/commit/79b76ba23bb7662ec1269bb1df6beb71c6ec1a0b))
+
 ## [1.0.2](https://github.com/jsalvata/lockfile-assay/compare/v1.0.1...v1.0.2) (2026-07-14)
 
 

@@ -55,7 +55,7 @@ jobs:
       # A tag, not a SHA — deliberate and safe: our `v*` tags are immutable (a
       # ruleset restricts update and deletion), and action.yml pins the exact CLI
       # version it installs. Prefer a SHA anyway? `@<commit-sha>` works here too.
-      - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
+      - uses: jsalvata/lockfile-assay@v1.0.3   # pin to a published release; bump on upgrade
         with:
           base: origin/${{ github.base_ref }}
           head: ${{ github.event.pull_request.head.sha }}
