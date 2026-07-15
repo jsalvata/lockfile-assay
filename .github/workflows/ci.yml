@@ -103,6 +103,13 @@ jobs:
     needs: [test, integration]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    # Mint the release identity from a dedicated App (RELEASE_APP_*, scoped to this
+    # environment, which is pinned to main) instead of GITHUB_TOKEN. semantic-release's
+    # @semantic-release/git pushes the `chore(release):` commit + tag straight to main;
+    # GITHUB_TOKEN (github-actions[bot]) cannot be a ruleset bypass actor, so its push is
+    # rejected by main's protection. The App IS a bypass actor on the `main` ruleset, so
+    # its push goes through. See docs/RELEASING.md.
+    environment: semantic-release
     permissions:
       contents: write
       issues: write
@@ -122,7 +129,14 @@ jobs:
         run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Hash-pinned like every third-party action here (same SHA as lockfile-assay.yml).
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        id: release-app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       - name: Release
         run: pnpm exec semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The dedicated App's token — bypasses main's protection to push the release commit.
+          GITHUB_TOKEN: ${{ steps.release-app-token.outputs.token }}
