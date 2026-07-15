@@ -1,6 +1,6 @@
 {
   "name": "lockfile-assay",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Prove your lockfile is untampered — a byte-exact derivation gate for pnpm-lock.yaml",
   "keywords": [
     "pnpm",

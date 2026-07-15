@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/jsalvata/lockfile-assay/compare/v1.1.1...v1.2.0) (2026-07-15)
+
+
+### Features
+
+* require node 24, target es2024 ([0324eec](https://github.com/jsalvata/lockfile-assay/commit/0324eece0fc292ca571026043851f732cd1651ed))
+
 ## [1.1.1](https://github.com/jsalvata/lockfile-assay/compare/v1.1.0...v1.1.1) (2026-07-15)
 
 
