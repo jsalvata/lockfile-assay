@@ -53,12 +53,8 @@ jobs:
       - run: pnpm test:integration
         env:
           PNPM_FIXTURE_VERSION: ${{ matrix.pnpm-fixture }}
-  # Lint every workflow — ours AND the example we ship — with zizmor, the security
-  # linter adopters run. We tell them to run it (examples/lockfile-assay.yml), so we
-  # gate on it too: a regression that reopens a finding fails CI here. Version-pinned
-  # so a newer zizmor can't turn CI red out from under us (bump deliberately); offline
-  # by default (no token) for determinism. Deliberate findings carry inline
-  # `zizmor: ignore` comments at the offending line.
+  # Gate every workflow and the shipped example on zizmor, the linter we tell
+  # adopters to run.
   lint-workflows:
     runs-on: ubuntu-latest
     permissions:
@@ -68,6 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: zizmor
+        # pinned so a newer zizmor can't turn CI red unexpectedly; bump deliberately
         run: pipx run zizmor==1.27.0 .github/workflows examples
 
   # Dogfood: assay THIS PR's lockfile with THIS PR's own code — the code under
@@ -83,14 +80,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      # persist-credentials stays on: the base fetch below reuses the token, and a
-      # pull_request job uploads no artifacts, so zizmor's artipacked does not apply.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }} # zizmor: ignore[artipacked]
-      # base_ref goes through env, never interpolated into the script, so a crafted
-      # branch name cannot break out of the shell (zizmor template-injection).
+          ref: ${{ github.event.pull_request.head.sha }} # zizmor: ignore[artipacked] base fetch below reuses the token; no artifacts uploaded
       - name: fetch the base branch so --base resolves
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -155,10 +148,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # Bootstrapping the package manager itself — it cannot come from our lockfile,
-      # and a new-enough npm is a prerequisite for OIDC trusted publishing below.
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest # zizmor: ignore[adhoc-packages]
+        run: npm install -g npm@latest # zizmor: ignore[adhoc-packages] bootstrapping npm itself; not from our lockfile
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0

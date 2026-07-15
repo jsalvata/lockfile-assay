@@ -32,10 +32,7 @@
 name: waiver-stamp-review
 
 on:
-  # workflow_run is a privileged trigger — deliberately so here. The header block
-  # above documents the pwn-request defense that makes this shape safe. Suppress
-  # zizmor's blanket dangerous-triggers warning rather than fight the design.
-  workflow_run: # zizmor: ignore[dangerous-triggers]
+  workflow_run: # zizmor: ignore[dangerous-triggers] see header comment
     workflows: [CI] # <-- name(s) of the CI workflow(s) that produce the backstop checks
                     #     named in `ci-checks` below — matches the `name:` at the top of
                     #     .github/workflows/ci.yml, which hosts the waiver-stamp producer.

@@ -32,33 +32,20 @@
 # (Dependabot reads it). Why it matters: spec §6, "The workflow's own supply chain".
 # (The lone exception — our own `jsalvata/lockfile-assay@v1.0.2` tag — is explained
 # and zizmor-suppressed at its `uses:` line below.)
-#
-# zizmor-clean: this workflow is gated by the lint-workflows job in ci.yml, and it
-# is the reference the example ships (examples/lockfile-assay.yml). Genuine
-# tightenings (scoped GITHUB_TOKEN + scoped App token) are applied; the deliberate
-# design choices (pull_request_target, our own tag) carry inline `zizmor: ignore`
-# comments with reasons at the offending line.
 name: lockfile-assay
 on:
-  # zizmor flags pull_request_target as a dangerous trigger — it is, in general.
-  # Here it is the whole point (see the ANCHOR note above), so suppress it.
-  pull_request_target: # zizmor: ignore[dangerous-triggers]
+  pull_request_target: # zizmor: ignore[dangerous-triggers] see the ANCHOR note above
 jobs:
   assay:
     runs-on: ubuntu-latest
     environment: lockfile-assay
-    # Least privilege for the workflow's own GITHUB_TOKEN: it only checks out the
-    # base and fetches head commits as git data. The App token (scoped below)
-    # does the privileged work. This also clears zizmor's excessive-permissions.
     permissions:
       contents: read
     steps:
-      # base branch — never the PR head. persist-credentials stays on (the default):
-      # the fetch step below reuses the token to read head commits from a private
-      # repo, and this job uploads no artifacts, so zizmor's artipacked does not apply.
+      # base branch — never the PR head
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          fetch-depth: 0 # zizmor: ignore[artipacked]
+          fetch-depth: 0 # zizmor: ignore[artipacked] persisted token is reused by the fetch below; no artifacts uploaded
       - name: fetch head as git data
         run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -69,14 +56,11 @@ jobs:
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
-          # Scope the App token to exactly what the assay needs — it posts its
-          # verdict as a check run (action.yml: "Checks: write") and nothing more.
-          # This also clears zizmor's github-app (blanket-permissions) finding.
           permission-checks: write
       # A tag, not a SHA — deliberate and safe: our `v*` tags are immutable (a
       # ruleset restricts update and deletion), and action.yml pins the exact CLI
       # version it installs. Prefer a SHA anyway? `@<commit-sha>` works here too.
-      - uses: jsalvata/lockfile-assay@v1.0.2 # zizmor: ignore[unpinned-uses] immutable v* tag (ruleset); action.yml pins the CLI — see note above
+      - uses: jsalvata/lockfile-assay@v1.0.2 # zizmor: ignore[unpinned-uses] see comment above
         with:
           base: origin/${{ github.base_ref }}
           head: ${{ github.event.pull_request.head.sha }}
