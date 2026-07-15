@@ -157,6 +157,11 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # what semantic-release needs: create the release + push the changelog
+          # commit (contents), comment on released issues/PRs
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
       - name: Release
         run: pnpm exec semantic-release
         env:
