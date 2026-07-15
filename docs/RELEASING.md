@@ -21,9 +21,10 @@ the new version into the two artifacts that must name it exactly:
   so the copy-paste example never goes stale.
 
 **The one it cannot touch: `.github/workflows/lockfile-assay.yml`** — this repo's
-own dogfood gate, which also pins the action. A GitHub Actions `GITHUB_TOKEN` is
-forbidden from pushing changes to files under `.github/workflows/`, so the
-release cannot bump it. **Bump that pin by hand (a normal PR) after a release**
+own dogfood gate, which also pins the action. The release identity is not granted
+`workflows: write` (the release App holds only `contents`/`issues`/`pull-requests`;
+a GitHub Actions `GITHUB_TOKEN` is forbidden from workflow files regardless), so
+the release cannot bump it. **Bump that pin by hand (a normal PR) after a release**
 that you want the gate to run on. Forgetting is harmless-but-stale: the gate
 simply keeps running the previous release.
 
@@ -49,6 +50,27 @@ Three properties fail **quietly** when changed:
 
 The accepted consequence: releases are **append-only**. A bad `v1.0.3` is
 superseded by `v1.0.4`, never retagged.
+
+## The `main` branch ruleset — the release identity bypasses it
+
+`main` is governed by a second ruleset — require-PR, required status checks, one
+approval — the everyday merge gate. But `@semantic-release/git` pushes the
+`chore(release):` commit (changelog + version pins) straight to `main`, no PR, so
+that push has to get through the gate.
+
+A GitHub Actions `GITHUB_TOKEN` **cannot be a ruleset bypass actor**, so the
+release job does not push as one. It runs as a **dedicated App** (`RELEASE_APP_*`,
+minted in the `semantic-release` environment, which is itself pinned to `main`)
+that sits on the branch ruleset's bypass list in `always` mode; its token replaces
+`GITHUB_TOKEN` for the semantic-release step.
+
+This does **not** reopen the empty-bypass rule above — that rule is about the `v*`
+**tag** ruleset, and it still holds. The release App bypasses only the **branch**
+ruleset, to land the release commit. It is **not** on the tag ruleset's bypass
+list, so it can still only *create* `v*` tags, never move or delete one: tag
+immutability survives even a compromised release App. Keep the App least-privilege
+(`contents` + `issues`/`pull-requests`, never `workflows: write`) so a leaked key
+buys an attacker no more than what an ordinary release already does.
 
 ## npm publishing — OIDC trusted publishing (no `NPM_TOKEN`)
 
