@@ -47,6 +47,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    environment: waiver-stamp-review # scopes the WAIVER_APP_* secrets to this job; the env is pinned to the default branch
     concurrency:
       group: waiver-stamp-review-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
@@ -64,10 +65,26 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: git fetch --no-tags --force origin "$HEAD_SHA"
 
+      # Mint the reviewer's identity from a DEDICATED App (WAIVER_APP_*, distinct from the
+      # lockfile-assay ASSAY_* App that anchors the honesty gate). The default GITHUB_TOKEN
+      # (github-actions[bot]) cannot approve PRs ("GitHub Actions is not permitted to
+      # approve pull requests") and would not count toward required approvals anyway; an
+      # App review does. Hash-pinned like every third-party action here.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.WAIVER_APP_ID }}
+          private-key: ${{ secrets.WAIVER_APP_PRIVATE_KEY }}
+          # Least-privilege: this token only posts the APPROVE review. Check/artifact reads
+          # use the job's default GITHUB_TOKEN (see the permissions: block above).
+          permission-pull-requests: write
+
       # Hash-pinned per repo policy (see the SECURITY header). Bump via the trailing
       # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.14.0 --jq .sha
       - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@1672fc2498a2e3921ebd13350b79feb909bba37b # v1.14.0
         with:
+          # The dedicated App's token — its APPROVE is what removes human review.
+          github-token: ${{ steps.app-token.outputs.token }}
           # CHECK-RUN names that must be green on the head SHA — NOT workflow job ids.
           # The two differ under `name:`/matrix: e.g. the `integration` matrix over pnpm
           # 9.12.0 / 10.34.1 produces "integration (9.12.0)" and "integration (10.34.1)",
