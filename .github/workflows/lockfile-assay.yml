@@ -30,18 +30,22 @@
 # Third-party actions are pinned by commit SHA, not by tag: a tag is mutable, and
 # this job runs with the App's credentials. Bump them by the trailing `# vX.Y.Z`
 # (Dependabot reads it). Why it matters: spec §6, "The workflow's own supply chain".
+# (The lone exception — our own `jsalvata/lockfile-assay@v1.0.2` tag — is explained
+# and zizmor-suppressed at its `uses:` line below.)
 name: lockfile-assay
 on:
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] see the ANCHOR note above
 jobs:
   assay:
     runs-on: ubuntu-latest
     environment: lockfile-assay
+    permissions:
+      contents: read
     steps:
       # base branch — never the PR head
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # zizmor: ignore[artipacked] persisted token is reused by the fetch below; no artifacts uploaded
       - name: fetch head as git data
         run: git fetch origin "pull/${{ github.event.pull_request.number }}/head"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -52,10 +56,11 @@ jobs:
         with:
           app-id: ${{ secrets.ASSAY_APP_ID }}
           private-key: ${{ secrets.ASSAY_APP_PRIVATE_KEY }}
+          permission-checks: write
       # A tag, not a SHA — deliberate and safe: our `v*` tags are immutable (a
       # ruleset restricts update and deletion), and action.yml pins the exact CLI
       # version it installs. Prefer a SHA anyway? `@<commit-sha>` works here too.
-      - uses: jsalvata/lockfile-assay@v1.0.2   # pin to a published release; bump on upgrade
+      - uses: jsalvata/lockfile-assay@v1.0.2 # zizmor: ignore[unpinned-uses] see comment above
         with:
           base: origin/${{ github.base_ref }}
           head: ${{ github.event.pull_request.head.sha }}

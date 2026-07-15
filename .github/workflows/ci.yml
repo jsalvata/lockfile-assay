@@ -12,10 +12,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -31,11 +34,15 @@ jobs:
           node dist/cli.js --help | grep -q check
   integration:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         pnpm-fixture: ['9.12.0', '10.34.1']
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -46,6 +53,20 @@ jobs:
       - run: pnpm test:integration
         env:
           PNPM_FIXTURE_VERSION: ${{ matrix.pnpm-fixture }}
+  # Gate every workflow and the shipped example on zizmor, the linter we tell
+  # adopters to run.
+  lint-workflows:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: zizmor
+        # pinned so a newer zizmor can't turn CI red unexpectedly; bump deliberately
+        run: pipx run zizmor==1.27.0 .github/workflows examples
+
   # Dogfood: assay THIS PR's lockfile with THIS PR's own code — the code under
   # review checking itself. Deliberately token-less: a `pull_request` job holds
   # no App credentials, so the memo is disabled and this always derives live. It
@@ -56,13 +77,17 @@ jobs:
   dogfood:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }} # zizmor: ignore[artipacked] base fetch below reuses the token; no artifacts uploaded
       - name: fetch the base branch so --base resolves
-        run: git fetch origin "${{ github.base_ref }}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch origin "$BASE_REF"
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -71,7 +96,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: assay this PR with the code under review
-        run: node dist/cli.js check --base "origin/${{ github.base_ref }}" --head HEAD --json
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node dist/cli.js check --base "origin/$BASE_REF" --head HEAD --json
   # waiver-stamp (producer, unprivileged): computes the waiver verdict over this
   # PR's base..head range and publishes it as the `waiver-stamp` check plus a
   # `waiver-stamp-report` artifact. It never holds a write token — the privileged
@@ -122,7 +149,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@latest # zizmor: ignore[adhoc-packages] bootstrapping npm itself; not from our lockfile
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
@@ -130,6 +157,11 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # what semantic-release needs: create the release + push the changelog
+          # commit (contents), comment on released issues/PRs
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
       - name: Release
         run: pnpm exec semantic-release
         env:

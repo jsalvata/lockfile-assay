@@ -32,7 +32,7 @@
 name: waiver-stamp-review
 
 on:
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers] see header comment
     workflows: [CI] # <-- name(s) of the CI workflow(s) that produce the backstop checks
                     #     named in `ci-checks` below — matches the `name:` at the top of
                     #     .github/workflows/ci.yml, which hosts the waiver-stamp producer.
@@ -81,6 +81,7 @@ jobs:
             integration (9.12.0)
             integration (10.34.1)
             dogfood
+            lint-workflows
           # This repo's own lockfile-assay gate IS a lockfile-honesty check: the App-posted
           # anchored verdict (.github/workflows/lockfile-assay.yml) covers dependency-bump
           # honesty, so G2 defers to it and the APPROVE body drops the honesty caveat.
