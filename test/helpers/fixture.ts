@@ -52,7 +52,8 @@ export async function makeFixtureRepo(
       null,
       2,
     ),
-    '.npmrc': `registry=${registry.url}\n`,
+    // fetch-retries=0 + a short timeout so the dead-registry tests fail fast.
+    '.npmrc': `registry=${registry.url}\nfetch-retries=0\nfetch-timeout=2000\n`,
     '.lockfile-assay.json': '{ "mode": "enforce" }',
   });
   relock(dir);
