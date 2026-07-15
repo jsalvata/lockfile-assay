@@ -65,8 +65,8 @@ jobs:
         run: git fetch --no-tags --force origin "$HEAD_SHA"
 
       # Hash-pinned per repo policy (see the SECURITY header). Bump via the trailing
-      # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.12.0 --jq .sha
-      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@edd421447bdb4bf375e68696e7480f3be433f1d1 # v1.12.0
+      # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.14.0 --jq .sha
+      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@1672fc2498a2e3921ebd13350b79feb909bba37b # v1.14.0
         with:
           # CHECK-RUN names that must be green on the head SHA — NOT workflow job ids.
           # The two differ under `name:`/matrix: e.g. the `integration` matrix over pnpm
