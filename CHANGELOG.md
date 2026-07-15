@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/jsalvata/lockfile-assay/compare/v1.0.3...v1.1.0) (2026-07-15)
+
+
+### Bug Fixes
+
+* scope release app token to least privilege ([e75a7e4](https://github.com/jsalvata/lockfile-assay/commit/e75a7e43345a00b273f022a4db1179d98d848949)), closes [#26](https://github.com/jsalvata/lockfile-assay/issues/26)
+
+
+### Features
+
+* gate workflows on zizmor, clean our own ([f84ae47](https://github.com/jsalvata/lockfile-assay/commit/f84ae4799550720358d0481626b8aaac40f9014d))
+
 ## [1.0.3](https://github.com/jsalvata/lockfile-assay/compare/v1.0.2...v1.0.3) (2026-07-15)
 
 
