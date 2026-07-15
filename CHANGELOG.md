@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/jsalvata/lockfile-assay/compare/v1.1.0...v1.1.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* fail fast in dead-registry integration tests ([502dfbd](https://github.com/jsalvata/lockfile-assay/commit/502dfbdfc2bb8661f7589da23d47826b634f167a))
+
 # [1.1.0](https://github.com/jsalvata/lockfile-assay/compare/v1.0.3...v1.1.0) (2026-07-15)
 
 
