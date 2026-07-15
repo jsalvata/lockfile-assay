@@ -24,7 +24,7 @@ import type { StagedFile } from './staging.js';
 import { collectStagedFiles, materialize } from './staging.js';
 import { effectivePnpmVersion, parsePin } from './toolchain.js';
 import { declaredPatchPaths, isTriggered } from './trigger.js';
-import { bytesEqual } from './verdict.js';
+import { buffersEqual } from './verdict.js';
 
 export type MemoHook = {
   consult(files: StagedFile[], committed: Buffer | null): Promise<MemoProvenance | null>;
@@ -253,7 +253,7 @@ async function evaluate(opts: {
     );
   }
 
-  if (bytesEqual(committed, derived.lockfile)) {
+  if (buffersEqual(committed, derived.lockfile)) {
     await opts.memo?.record(files, derived.lockfile, pnpmVersion);
     return result({ kind: 'pass' }, mode, base, headLabel, {
       toolchain: { pinned: pin.version, effective: pnpmVersion },

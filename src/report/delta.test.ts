@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bytesEqual } from '../verdict.js';
+import { buffersEqual } from '../verdict.js';
 import { deltaSummary } from './delta.js';
 
 const lock = (pkgs: string[]) =>
@@ -9,9 +9,9 @@ const lock = (pkgs: string[]) =>
 
 describe('verdict', () => {
   it('byte equality is exact and null-safe', () => {
-    expect(bytesEqual(Buffer.from('a'), Buffer.from('a'))).toBe(true);
-    expect(bytesEqual(Buffer.from('a'), Buffer.from('b'))).toBe(false);
-    expect(bytesEqual(null, Buffer.from('a'))).toBe(false);
+    expect(buffersEqual(Buffer.from('a'), Buffer.from('a'))).toBe(true);
+    expect(buffersEqual(Buffer.from('a'), Buffer.from('b'))).toBe(false);
+    expect(buffersEqual(null, Buffer.from('a'))).toBe(false);
   });
 });
 
