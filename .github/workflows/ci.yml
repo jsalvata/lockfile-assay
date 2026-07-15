@@ -121,7 +121,7 @@ jobs:
           fetch-depth: 0 # waiver-stamp walks the full base..head commit range
           persist-credentials: false
       - name: waiver-stamp
-        uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp@edd421447bdb4bf375e68696e7480f3be433f1d1 # v1.12.0
+        uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp@1672fc2498a2e3921ebd13350b79feb909bba37b # v1.14.0
   # Release runs only AFTER test + integration pass, and only on a push to main
   # — never in parallel with the tests. Publishing to npm uses OIDC trusted
   # publishing (no NPM_TOKEN); configure the trusted publisher for this package
