@@ -47,6 +47,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    environment: waiver-stamp-review # scopes the WAIVER_APP_* secrets to this job; the env is pinned to the default branch
     concurrency:
       group: waiver-stamp-review-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
@@ -64,10 +65,23 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: git fetch --no-tags --force origin "$HEAD_SHA"
 
+      # Mint the reviewer's identity from a DEDICATED App (WAIVER_APP_*, kept distinct from
+      # the lockfile-assay ASSAY_* App that anchors the honesty gate — separate identities,
+      # separate blast radius). An App review counts toward the "require 1 approval" branch
+      # protection rule; the ephemeral GITHUB_TOKEN's review does not. Hash-pinned like every
+      # third-party action here (same SHA as lockfile-assay.yml uses).
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.WAIVER_APP_ID }}
+          private-key: ${{ secrets.WAIVER_APP_PRIVATE_KEY }}
+
       # Hash-pinned per repo policy (see the SECURITY header). Bump via the trailing
       # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.12.0 --jq .sha
       - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@edd421447bdb4bf375e68696e7480f3be433f1d1 # v1.12.0
         with:
+          # The dedicated App's installation token — its APPROVE is what removes human review.
+          github-token: ${{ steps.app-token.outputs.token }}
           # CHECK-RUN names that must be green on the head SHA — NOT workflow job ids.
           # The two differ under `name:`/matrix: e.g. the `integration` matrix over pnpm
           # 9.12.0 / 10.34.1 produces "integration (9.12.0)" and "integration (10.34.1)",
