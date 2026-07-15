@@ -81,8 +81,8 @@ them:
 
    - **`fetch-depth: 0`** on `actions/checkout` — the default shallow clone has no
      merge-base for the check to derive from.
-   - **`node-version: 22`** — the CLI requires Node ≥ 22 and dies on the engine check
-     under Node 20.
+   - **`node-version: 24`** — the CLI requires Node ≥ 24 and dies on the engine check
+     under Node 22.
 
    Then follow [`docs/setup-github-app.md`](docs/setup-github-app.md) for the one-time
    App setup, and pin the result as a **required status check**. Leave the mode on
