@@ -81,7 +81,7 @@ jobs:
 
       # Hash-pinned per repo policy (see the SECURITY header). Bump via the trailing
       # comment: gh api repos/jsalvata/waiver-stamp/commits/v1.14.0 --jq .sha
-      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@1672fc2498a2e3921ebd13350b79feb909bba37b # v1.14.0
+      - uses: jsalvata/waiver-stamp/.github/actions/waiver-stamp-review@00188edd10489f8acdabfe46848d8d79a2cb3b7d # v1.24.0
         with:
           # The dedicated App's token — its APPROVE is what removes human review.
           github-token: ${{ steps.app-token.outputs.token }}
