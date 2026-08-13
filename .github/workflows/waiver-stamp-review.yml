@@ -1,0 +1,24 @@
+# waiver-stamp reviewer — the PRIVILEGED caller (holds pull-requests: write). Its
+# security-load-bearing shape (the pwn-request defense) lives in the pinned reusable workflow it
+# calls, not here. See docs/auto-approval-setup.md.
+name: waiver-stamp-review
+
+on:
+  # The pwn-request defense lives in the pinned reusable workflow: it checks out the
+  # default branch only and fetches the PR head as git data, never executing it.
+  workflow_run: # zizmor: ignore[dangerous-triggers] see note above
+    workflows: ["CI","lockfile-assay","waiver-stamp-ci"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  checks: read
+  contents: read
+  actions: read
+
+jobs:
+  review:
+    uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@c30cda4300170a71ea82c0351bf3906b96490869 # v1.24.2
+    secrets:
+      app_id: ${{ secrets.WAIVER_STAMP_APP_ID }}
+      app_private_key: ${{ secrets.WAIVER_STAMP_APP_PRIVATE_KEY }}
