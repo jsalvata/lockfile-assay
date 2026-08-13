@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   review:
-    uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@c30cda4300170a71ea82c0351bf3906b96490869 # v1.24.2
+    uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@479314867f256728e3494dbd753c521bb37cf817 # v1.25.3
     secrets:
       app_id: ${{ secrets.WAIVER_STAMP_APP_ID }}
       app_private_key: ${{ secrets.WAIVER_STAMP_APP_PRIVATE_KEY }}
