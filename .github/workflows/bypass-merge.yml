@@ -1,0 +1,46 @@
+# Solo-maintainer relief valve: merges a GREEN pull request that is blocked only
+# by the review rule. Why it exists: PRs touching .github/** require a code-owner
+# (@jsalvata) approval, but GitHub forbids authors approving their own PR, and on
+# a personal repo the main ruleset's "Repository admin" bypass actor matches
+# nobody (the owner holds no assigned role, and rulesets have no per-user actor
+# type) — so a solo PR touching CI is unmergeable by hand (see PRs 25 and 38).
+#
+# The release App is a ruleset bypass actor, so a merge performed with its token
+# clears the review rule. Because that bypass would ALSO clear required status
+# checks, this workflow refuses to merge unless the PR's check rollup is fully
+# SUCCESS — keeping the bypass scoped to the review rule alone.
+#
+# Dispatch (runs the main-branch definition): gh workflow run bypass-merge.yml -f pr=<number>
+name: bypass-merge
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: number of the green PR to merge
+        required: true
+permissions: {}
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    # the App creds live on this environment; it is pinned to main, which a
+    # workflow_dispatch run of the main-branch definition satisfies
+    environment: semantic-release
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: merge only if every check is green
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          state="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup --jq .statusCheckRollup.state)"
+          if [ "$state" != "SUCCESS" ]; then
+            echo "refusing to bypass-merge PR $PR: check rollup is $state, not SUCCESS" >&2
+            exit 1
+          fi
+          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --merge
