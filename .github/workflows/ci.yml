@@ -64,8 +64,10 @@ jobs:
         with:
           persist-credentials: false
       - name: zizmor
-        # pinned so a newer zizmor can't turn CI red unexpectedly; bump deliberately
-        run: pipx run zizmor==1.27.0 .github/workflows examples
+        # pinned so a newer zizmor can't turn CI red unexpectedly; bump deliberately.
+        # The example must be named as a file: a directory input only collects
+        # workflows under `.github/workflows`, so `examples` alone yields nothing.
+        run: pipx run zizmor==1.29.0 .github/workflows examples/lockfile-assay.yml
 
   # Dogfood: assay THIS PR's lockfile with THIS PR's own code — the code under
   # review checking itself. Deliberately token-less: a `pull_request` job holds
