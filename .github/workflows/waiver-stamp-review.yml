@@ -19,6 +19,17 @@ permissions:
 jobs:
   review:
     uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@c30cda4300170a71ea82c0351bf3906b96490869 # v1.24.2
+    with:
+      # Autodiscovery can't work in v1.24.2 — the minted App token carries only
+      # pull-requests:write, never the administration:read the discovery needs — so
+      # name the required check-run contexts explicitly (fail-closed if this drifts).
+      ci-checks: |
+        test
+        integration (9.12.0)
+        integration (10.34.1)
+        dogfood
+        lockfile-assay
+        waiver-stamp
     secrets:
       app_id: ${{ secrets.WAIVER_STAMP_APP_ID }}
       app_private_key: ${{ secrets.WAIVER_STAMP_APP_PRIVATE_KEY }}
