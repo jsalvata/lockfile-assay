@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { run } from './toolchain.js';
 
+// --ignore-scripts and --ignore-pnpmfile are security load-bearing: derivation re-resolves an
+// untrusted manifest, so it must never execute repo-supplied code (lifecycle scripts, pnpmfile hooks).
 export const INVOCATION =
   'pnpm install --lockfile-only --ignore-scripts --prefer-frozen-lockfile --ignore-pnpmfile';
 
