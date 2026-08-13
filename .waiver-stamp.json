@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jsalvata/waiver-stamp/v1.24.2/schema/waiver-stamp-config.v0.schema.json",
+  "allowBumping": [],
+  "changeDocs": {
+    "allow": [],
+    "deny": [
+      ".claude/**",
+      "**/CLAUDE.md",
+      "**/AGENTS.md",
+      "**/GEMINI.md",
+      "**/SKILL.md",
+      ".cursor/**",
+      ".cursorrules",
+      ".github/copilot-instructions.md"
+    ]
+  },
+  "lockfileHonestyCheck": "assay"
+}

@@ -1,0 +1,14 @@
+# waiver-stamp producer — runs waiver-stamp as unprivileged pull_request CI, publishing the
+# `waiver-stamp` check the reviewer consumes. The hardened shape lives in the pinned reusable
+# workflow, not here. See docs/auto-approval-setup.md.
+name: waiver-stamp-ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  waiver-stamp:
+    uses: jsalvata/waiver-stamp/.github/workflows/reusable-ci.yml@v1.24.2
