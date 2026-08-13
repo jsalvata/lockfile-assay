@@ -48,4 +48,9 @@ jobs:
             echo "refusing to bypass-merge PR $PR: check rollup is $state, not SUCCESS" >&2
             exit 1
           fi
-          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --merge
+          # Raw REST, not `gh pr merge`: the porcelain refuses client-side while
+          # the PR is blocked or behind — the exact states this valve exists to
+          # merge through. The raw call lets the server judge with the App's
+          # bypass rights (blocked-only-by-review, or behind under the strict
+          # up-to-date rule, both of which the always-bypass actor clears).
+          gh api -X PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR}/merge" -f merge_method=merge
