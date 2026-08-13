@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   waiver-stamp:
-    uses: jsalvata/waiver-stamp/.github/workflows/reusable-ci.yml@v1.24.2
+    uses: jsalvata/waiver-stamp/.github/workflows/reusable-ci.yml@c30cda4300170a71ea82c0351bf3906b96490869 # v1.24.2

@@ -4,7 +4,9 @@
 name: waiver-stamp-review
 
 on:
-  workflow_run:
+  # The pwn-request defense lives in the pinned reusable workflow: it checks out the
+  # default branch only and fetches the PR head as git data, never executing it.
+  workflow_run: # zizmor: ignore[dangerous-triggers] see note above
     workflows: ["CI","lockfile-assay","waiver-stamp-ci"]
     types: [completed]
 
@@ -16,7 +18,7 @@ permissions:
 
 jobs:
   review:
-    uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@v1.24.2
+    uses: jsalvata/waiver-stamp/.github/workflows/reusable-review.yml@c30cda4300170a71ea82c0351bf3906b96490869 # v1.24.2
     secrets:
       app_id: ${{ secrets.WAIVER_STAMP_APP_ID }}
       app_private_key: ${{ secrets.WAIVER_STAMP_APP_PRIVATE_KEY }}
