@@ -37,7 +37,7 @@ export function derivationEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Pro
   return out;
 }
 
-export function run(
+export function runPnpm(
   args: string[],
   dir: string,
 ): { status: number; stdout: Buffer; stderr: Buffer } {
@@ -52,7 +52,7 @@ export function run(
 }
 
 export function effectivePnpmVersion(dir: string): string {
-  const r = run(['--version'], dir);
+  const r = runPnpm(['--version'], dir);
   if (r.status !== 0) throw new Error(`cannot determine pnpm version: ${r.stderr.toString()}`);
   return r.stdout.toString().trim().split('\n').pop() as string;
 }
